@@ -27,14 +27,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
 
 // ----- Config Firebase -----
-const firebaseConfig = {
-  apiKey: "AIzaSyDJwHqJdmUKayrxTnHrcGHcCLCm9lmOtMY",
-  authDomain: "idleclick-5fc91.firebaseapp.com",
-  projectId: "idleclick-5fc91",
-  storageBucket: "idleclick-5fc91.firebasestorage.app",
-  messagingSenderId: "166564180674",
-  appId: "1:166564180674:web:75dce2c2eb0cc6556fc15b"
-};
+import { firebaseConfig } from './firebaseConfig.js';
 
 // Initialisation conditionnelle (permet d'héberger même sans config remplie)
 let app, auth, db;
@@ -119,15 +112,17 @@ function compareSci(a, b) {
 const units = ["", "k", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc"];
 function formatSci(sci) {
   if (sci.mantisse === 0) return "0";
-  const tier = Math.floor(sci.exposant / 3);
+  let tier = Math.floor(sci.exposant / 3);
+  if (tier < 0) tier = 0; // ✅ empêche les index négatifs
   if (tier < units.length) {
     const scaled = fromScientificParts(sci.mantisse, sci.exposant - tier * 3);
     return scaled.toFixed(scaled < 10 ? 2 : scaled < 100 ? 1 : 0) + units[tier];
   }
   return sci.mantisse.toFixed(2) + "e" + sci.exposant;
 }
+
 // ----- État du jeu -----
-const GAME_VERSION = 0.16; // Incrémentez si le modèle de données change
+const GAME_VERSION = 1.0; // Incrémentez si le modèle de données change
 const SAVE_KEY = "idleclick-save-v" + GAME_VERSION;
 console.log("Jeu version", GAME_VERSION);
 
@@ -181,7 +176,7 @@ function resetLocal() {
 // ----- Rendu -----
 function render() {
   els.scoreValue.textContent = formatSci(state.score);
-  els.rateValue.textContent = formatSci(state.ratePerSec);
+  els.rateValue.textContent = formatSci(state.ratePerSec) + " / sec";
   renderShop()
 }
 
@@ -273,7 +268,7 @@ function tick(now) {
     state.score = addSci(state.score, gain);
     state.totalEarned = addSci(state.totalEarned, gain);
     els.scoreValue.textContent = formatSci(state.score);
-    els.rateValue.textContent = formatSci(state.ratePerSec);
+    els.rateValue.textContent = formatSci(state.ratePerSec) + " / sec";
     updateShopState(); // ✅ rafraîchit juste l’état visuel
   }
 
