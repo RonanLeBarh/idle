@@ -26,7 +26,7 @@ import {
   onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
 
-// ----- Remplace par ta configuration Firebase -----
+// ----- Config Firebase -----
 const firebaseConfig = {
   apiKey: "AIzaSyDJwHqJdmUKayrxTnHrcGHcCLCm9lmOtMY",
   authDomain: "idleclick-5fc91.firebaseapp.com",
@@ -207,7 +207,7 @@ function renderShop() {
     btn.textContent = "Acheter";
     btn.disabled = state.score < cost;
     btn.addEventListener("click", () => {
-      if (state.score >= cost) {
+      if (Math.floor(state.score) >= cost) {
         state.score -= cost;
         u.level += 1;
         state.ratePerSec = computeRatePerSec(state);
@@ -245,6 +245,16 @@ function tick(now) {
 
 // ----- Interactions -----
 els.clickBtn.addEventListener("click", () => {
+  console.log("Avant achat", state.score, cost, u.level);
+  if (Math.floor(state.score) >= cost) {
+    state.score -= cost;
+    u.level++;
+    state.ratePerSec = computeRatePerSec(state);
+    console.log("Après achat", state.score, u.level);
+    saveLocal();
+    scheduleCloudSave();
+    render();
+  }
   const add = computeClickGain(state);
   state.score += add;
   state.totalEarned += add;
