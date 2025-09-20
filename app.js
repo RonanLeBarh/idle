@@ -67,9 +67,9 @@ const els = {
 };
 
 // ----- Modèle de données du jeu -----
-const GAME_VERSION = 0.4;
+const GAME_VERSION = 0.5;
 const SAVE_KEY = "idleclick-save-v" + GAME_VERSION;
-debugLog("Jeu version", GAME_VERSION);
+console.log("Jeu version", GAME_VERSION);
 // État par défaut
 const defaultState = {
   score: 0,
@@ -427,10 +427,15 @@ async function initAuthAndCloud() {
     console.warn("Auth anonyme impossible. Mode local uniquement.", e);
   }
 }
+// ----- Debug log -----
 function debugLog(...args) {
   console.log(...args);
-  document.getElementById("debug").textContent += args.join(" ") + "\n";
+  const dbg = document.getElementById("debug");
+  if (dbg) {
+    dbg.textContent += args.join(" ") + "\n";
+  }
 }
+
 
 // ----- Démarrage -----
 function init() {
