@@ -127,7 +127,7 @@ function formatSci(sci) {
   return sci.mantisse.toFixed(2) + "e" + sci.exposant;
 }
 // ----- État du jeu -----
-const GAME_VERSION = 0.15; // Incrémentez si le modèle de données change
+const GAME_VERSION = 0.16; // Incrémentez si le modèle de données change
 const SAVE_KEY = "idleclick-save-v" + GAME_VERSION;
 console.log("Jeu version", GAME_VERSION);
 
@@ -182,10 +182,10 @@ function resetLocal() {
 function render() {
   els.scoreValue.textContent = formatSci(state.score);
   els.rateValue.textContent = formatSci(state.ratePerSec);
+  renderShop()
 }
 
 function renderShop() {
-
   const items = [
     { key: "generator", title: "Générateur", desc: "Produit passivement." },
     { key: "boost", title: "Boost", desc: "Multiplie la production." },
@@ -222,12 +222,12 @@ function renderShop() {
     btn.disabled = compareSci(currentScore, costSci) < 0;
 
     btn.addEventListener("click", () => {
-      debugLog("Avant achat", formatSci(state.score), formatSci(costSci), u.level);
-      if (compareSci(state.score, costSci) >= 0) {
+      debugLog("Avant achat", normalizeSci(state.score), normalizeSci(costSci), u.level);
+      if (compareSci(normalizeSci(state.score), costSci) >= 0) {
         state.score = subSci(state.score, costSci);
         u.level++;
         state.ratePerSec = computeRatePerSec(state);
-        debugLog("Après achat", formatSci(state.score), u.level);
+        debugLog("Après achat", normalizeSci(state.score), u.level);
         saveLocal();
         scheduleCloudSave();
         render();
@@ -241,8 +241,29 @@ function renderShop() {
     els.shopList.appendChild(wrapper);
   });
 }
+
+function updateShopState() {
+  const items = els.shopList.querySelectorAll(".shop-item");
+  const keys = ["generator", "boost", "click"];
+  const currentScore = normalizeSci(state.score);
+
+  items.forEach((itemEl, idx) => {
+    const u = state.upgrades[keys[idx]];
+    const costNow = upgradeCost(u);
+    const costSci = normalizeSci(toScientificParts(costNow));
+
+    const costEl = itemEl.querySelector(".desc");
+    const btn = itemEl.querySelector("button");
+
+    costEl.textContent = `Coût: ${formatSci(costSci)}`;
+    costEl.style.color = compareSci(currentScore, costSci) < 0 ? "#ff6b6b" : "var(--muted)";
+    btn.disabled = compareSci(currentScore, costSci) < 0;
+  });
+}
+
 // ----- Boucle de jeu -----
 let lastTs = performance.now();
+
 function tick(now) {
   const dt = (now - lastTs) / 1000;
   lastTs = now;
@@ -253,11 +274,12 @@ function tick(now) {
     state.totalEarned = addSci(state.totalEarned, gain);
     els.scoreValue.textContent = formatSci(state.score);
     els.rateValue.textContent = formatSci(state.ratePerSec);
-    renderShop(); // rafraîchit l’état des boutons
+    updateShopState(); // ✅ rafraîchit juste l’état visuel
   }
 
   requestAnimationFrame(tick);
 }
+
 
 
 // ----- Interactions -----
