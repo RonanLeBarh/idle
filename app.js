@@ -199,6 +199,8 @@ function renderShop() {
     const costEl = document.createElement("div");
     costEl.className = "desc";
     costEl.textContent = `Coût: ${formatNumber(cost)}`;
+    costEl.style.color = state.score < cost ? "#ff6b6b" : "var(--muted)";
+
 
     const btn = document.createElement("button");
     btn.className = "btn primary";
