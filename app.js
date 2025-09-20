@@ -76,7 +76,7 @@ function debugLog(...args) {
 }
 
 // ----- Modèle de données du jeu -----
-const GAME_VERSION = 0.6;
+const GAME_VERSION = 0.7;
 const SAVE_KEY = "idleclick-save-v" + GAME_VERSION;
 console.log("Jeu version", GAME_VERSION);
 
@@ -163,80 +163,60 @@ function render() {
 
 function renderShop() {
   const items = [
-    {
-      key: "generator",
-      title: "Générateur",
-      desc: "Produit passivement au fil du temps.",
-      // lead-in labels in strings are UI; compute in JS
-    },
-    {
-      key: "boost",
-      title: "Boost",
-      desc: "Multiplie toute la production.",
-    },
-    {
-      key: "click",
-      title: "Clic+",
-      desc: "Augmente le gain par clic manuel.",
-    }
+    { key: "generator", title: "Générateur", desc: "Produit passivement." },
+    { key: "boost", title: "Boost", desc: "Multiplie la production." },
+    { key: "click", title: "Clic+", desc: "Augmente le gain par clic." }
   ];
+
   els.shopList.innerHTML = "";
+
   items.forEach(item => {
     const u = state.upgrades[item.key];
-    const cost = upgradeCost(u);
+    const costNow = upgradeCost(u);
 
     const wrapper = document.createElement("div");
     wrapper.className = "shop-item";
 
     const meta = document.createElement("div");
     meta.className = "meta";
-    const title = document.createElement("div");
-    title.className = "title";
-    title.textContent = `${item.title} — Niveau ${u.level}`;
-    const desc = document.createElement("div");
-    desc.className = "desc";
-    // Affiche l’effet spécifique
-    let effect = "";
-    if (item.key === "generator") effect = `+${u.baseRate}/sec par niveau`;
-    if (item.key === "boost") effect = `x${state.upgrades.boost.multiplierPerLevel} par niveau`;
-    if (item.key === "click") effect = `+${u.clickGain} par niveau (multiplié par Boost)`;
-    desc.textContent = `${item.desc} Effet: ${effect}.`;
-    meta.appendChild(title);
-    meta.appendChild(desc);
+    meta.innerHTML = `<div class="title">${item.title} — Niveau ${u.level}</div>
+                      <div class="desc">${item.desc}</div>`;
 
     const buy = document.createElement("div");
     buy.className = "buy";
+
     const costEl = document.createElement("div");
     costEl.className = "desc";
-    costEl.textContent = `Coût: ${formatNumber(cost)}`;
-    costEl.style.color = Math.floor(state.score) < cost ? "#ff6b6b" : "var(--muted)";
-
+    costEl.textContent = `Coût: ${formatNumber(costNow)}`;
+    costEl.style.color = Math.floor(state.score) < costNow ? "#ff6b6b" : "var(--muted)";
 
     const btn = document.createElement("button");
     btn.className = "btn primary";
     btn.textContent = "Acheter";
-    btn.disabled = Math.floor(state.score) < cost;
+    btn.disabled = Math.floor(state.score) < costNow;
+
+    // ✅ Listener bien attaché AVANT insertion dans le DOM
     btn.addEventListener("click", () => {
-      console.log("Avant achat", state.score, cost, u.level);
-      if (Math.floor(state.score) >= cost) {
-        state.score -= cost;
-        u.level += 1;
+      debugLog("Avant achat", state.score, costNow, u.level);
+      if (Math.floor(state.score) >= costNow) {
+        state.score -= costNow;
+        u.level++;
         state.ratePerSec = computeRatePerSec(state);
-        console.log("Après achat", state.score, u.level);
+        debugLog("Après achat", state.score, u.level);
         saveLocal();
         scheduleCloudSave();
-        render();
+        render(); // rafraîchit l'affichage après achat
       }
     });
 
     buy.appendChild(costEl);
     buy.appendChild(btn);
-
     wrapper.appendChild(meta);
     wrapper.appendChild(buy);
     els.shopList.appendChild(wrapper);
   });
 }
+
 
 // ----- Boucle de jeu -----
 let lastTs = performance.now();
