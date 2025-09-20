@@ -245,12 +245,12 @@ function tick(now) {
 
 // ----- Interactions -----
 els.clickBtn.addEventListener("click", () => {
-  console.log("Avant achat", state.score, cost, u.level);
+  debugLog("Avant achat", state.score, cost, u.level);
   if (Math.floor(state.score) >= cost) {
     state.score -= cost;
     u.level++;
     state.ratePerSec = computeRatePerSec(state);
-    console.log("Après achat", state.score, u.level);
+    debugLog("Après achat", state.score, u.level);
     saveLocal();
     scheduleCloudSave();
     render();
@@ -425,6 +425,10 @@ async function initAuthAndCloud() {
   } catch (e) {
     console.warn("Auth anonyme impossible. Mode local uniquement.", e);
   }
+}
+function debugLog(...args) {
+  console.log(...args);
+  document.getElementById("debug").textContent += args.join(" ") + "\n";
 }
 
 // ----- Démarrage -----
