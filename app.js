@@ -1,3 +1,6 @@
+```
+**Partie 1/4**
+```
 // app.js (ES module)
 // Jeu idle/incrémental avec sauvegarde locale + Firebase et classement global.
 // Remplace la CONFIG Firebase plus bas puis déploie sur GitHub Pages.
@@ -76,13 +79,13 @@ function debugLog(...args) {
 }
 
 // ----- Modèle de données du jeu -----
-const GAME_VERSION = 0.7;
+const GAME_VERSION = 0.8;
 const SAVE_KEY = "idleclick-save-v" + GAME_VERSION;
 console.log("Jeu version", GAME_VERSION);
 
 // État par défaut
 const defaultState = {
-  score: 0,
+  score: 10000,
   totalEarned: 0,
   // Ticks par seconde convertis en per-sec
   ratePerSec: 0,
@@ -98,7 +101,9 @@ const defaultState = {
   lastSaveAt: null,
   createdAt: Date.now()
 };
-
+```
+**Partie 2/4**
+```
 // ----- État runtime -----
 let state = loadLocal() || structuredClone(defaultState);
 let uid = null; // défini après Auth anonyme
@@ -194,7 +199,9 @@ function renderShop() {
     btn.className = "btn primary";
     btn.textContent = "Acheter";
     btn.disabled = Math.floor(state.score) < costNow;
-
+```
+**Partie 3/4**
+```
     // ✅ Listener bien attaché AVANT insertion dans le DOM
     btn.addEventListener("click", () => {
       debugLog("Avant achat", state.score, costNow, u.level);
@@ -298,7 +305,9 @@ async function manualCloudSave() {
   await cloudUpsert();
   alert("Sauvegarde Cloud effectuée.");
 }
-
+```
+**Partie 4/4**
+```
 async function cloudUpsert() {
   if (!db || !uid) return;
   const ref = doc(db, "players", uid);
