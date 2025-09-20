@@ -76,7 +76,7 @@ function debugLog(...args) {
 }
 
 // ----- Modèle de données du jeu -----
-const GAME_VERSION = 0.9;
+const GAME_VERSION = 0.11; // Incrémentez si le modèle de données change
 const SAVE_KEY = "idleclick-save-v" + GAME_VERSION;
 console.log("Jeu version", GAME_VERSION);
 
@@ -205,9 +205,11 @@ function renderShop() {
         debugLog("Après achat", state.score, u.level);
         saveLocal();
         scheduleCloudSave();
-        render(); // rafraîchit l'affichage après achat
+        renderScore();
+        renderShop(); // on rafraîchit la boutique uniquement ici
       }
     });
+
 
     buy.appendChild(costEl);
     buy.appendChild(btn);
@@ -220,20 +222,33 @@ function renderShop() {
 
 // ----- Boucle de jeu -----
 let lastTs = performance.now();
+function renderScore() {
+  els.scoreValue.textContent = formatNumber(state.score);
+  els.rateValue.textContent = state.ratePerSec.toFixed(2);
+}
+
 function tick(now) {
-  const dt = (now - lastTs) / 1000; // secondes
+  const dt = (now - lastTs) / 1000;
   lastTs = now;
 
-  // Gagne passif
   const gain = state.ratePerSec * dt;
   if (gain > 0) {
     state.score += gain;
     state.totalEarned += gain;
+    renderScore();
   }
 
-  render();
   requestAnimationFrame(tick);
 }
+
+// Au démarrage
+renderScore();
+renderShop();
+requestAnimationFrame((ts) => {
+  lastTs = ts;
+  requestAnimationFrame(tick);
+});
+
 
 // ----- Interactions -----
 els.clickBtn.addEventListener("click", () => {
