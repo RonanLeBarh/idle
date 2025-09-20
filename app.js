@@ -75,62 +75,78 @@ function debugLog(...args) {
   }
 }
 
-// Convertit un nombre en mantisse + exposant
+// ----- Mantisse/Exposant -----
 function toScientificParts(num) {
   if (num === 0) return { mantisse: 0, exposant: 0 };
   const exp = Math.floor(Math.log10(Math.abs(num)));
   const mantisse = num / Math.pow(10, exp);
   return { mantisse, exposant: exp };
 }
-
-// Reconvertit mantisse + exposant en nombre
-function fromScientificParts(mantisse, exposant) {
-  return mantisse * Math.pow(10, exposant);
+function fromScientificParts(m, e) {
+  return m * Math.pow(10, e);
+}
+function normalizeSci(sci) {
+  if (sci.mantisse === 0) return { mantisse: 0, exposant: 0 };
+  let m = sci.mantisse;
+  let e = sci.exposant;
+  while (Math.abs(m) >= 10) { m /= 10; e++; }
+  while (Math.abs(m) < 1 && m !== 0) { m *= 10; e--; }
+  return { mantisse: m, exposant: e };
+}
+function addSci(a, b) {
+  if (a.mantisse === 0) return { ...b };
+  if (b.mantisse === 0) return { ...a };
+  if (a.exposant > b.exposant) {
+    const diff = a.exposant - b.exposant;
+    return normalizeSci({ mantisse: a.mantisse + b.mantisse / Math.pow(10, diff), exposant: a.exposant });
+  } else {
+    const diff = b.exposant - a.exposant;
+    return normalizeSci({ mantisse: a.mantisse / Math.pow(10, diff) + b.mantisse, exposant: b.exposant });
+  }
+}
+function subSci(a, b) {
+  return addSci(a, { mantisse: -b.mantisse, exposant: b.exposant });
+}
+function compareSci(a, b) {
+  if (a.exposant > b.exposant) return 1;
+  if (a.exposant < b.exposant) return -1;
+  if (a.mantisse > b.mantisse) return 1;
+  if (a.mantisse < b.mantisse) return -1;
+  return 0;
 }
 
-// ----- Modèle de données du jeu -----
-const GAME_VERSION = 0.13; // Incrémentez si le modèle de données change
+// ----- Formatage -----
+const units = ["", "k", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc"];
+function formatSci(sci) {
+  if (sci.mantisse === 0) return "0";
+  const tier = Math.floor(sci.exposant / 3);
+  if (tier < units.length) {
+    const scaled = fromScientificParts(sci.mantisse, sci.exposant - tier * 3);
+    return scaled.toFixed(scaled < 10 ? 2 : scaled < 100 ? 1 : 0) + units[tier];
+  }
+  return sci.mantisse.toFixed(2) + "e" + sci.exposant;
+}
+// ----- État du jeu -----
+const GAME_VERSION = 0.14; // Incrémentez si le modèle de données change
 const SAVE_KEY = "idleclick-save-v" + GAME_VERSION;
-console.log("Jeu version", GAME_VERSION);
 
-// État par défaut
 const defaultState = {
-  score: 10000,
-  totalEarned: 0,
-  // Ticks par seconde convertis en per-sec
-  ratePerSec: 0,
+  score: { mantisse: 0, exposant: 0 },
+  totalEarned: { mantisse: 0, exposant: 0 },
+  ratePerSec: { mantisse: 0, exposant: 0 },
   upgrades: {
-    // Générateurs: produisent passivement
-    generator: { level: 0, baseCost: 10, costMult: 1.15, baseRate: 0.2 }, // 0.2/sec
-    // Boost: multiplie la production totale
+    generator: { level: 0, baseCost: 10, costMult: 1.15, baseRate: 0.2 },
     boost:     { level: 0, baseCost: 50, costMult: 1.25, multiplierPerLevel: 1.5 },
-    // Click: augmente le clic manuel
     click:     { level: 0, baseCost: 20, costMult: 1.18, clickGain: 1 }
   },
-  displayName: null,
-  lastSaveAt: null,
-  createdAt: Date.now()
+  displayName: null
 };
 
-// ----- État runtime -----
 let state = loadLocal() || structuredClone(defaultState);
-let uid = null; // défini après Auth anonyme
+let uid = null;
 
 // ----- Helpers -----
-function formatNumber(n) {
-  if (n < 1000) return n.toFixed(0);
-  const units = ["k", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc"];
-  let u = -1;
-  let num = n;
-  while (num >= 1000 && u < units.length - 1) {
-    num /= 1000;
-    u++;
-  }
-  return num.toFixed(num < 10 ? 2 : num < 100 ? 1 : 0) + units[u];
-}
-
 function upgradeCost(u) {
-  // coût = baseCost * costMult^level
   return Math.floor(u.baseCost * Math.pow(u.costMult, u.level));
 }
 
@@ -138,39 +154,33 @@ function computeRatePerSec(s) {
   const gen = s.upgrades.generator;
   const boost = s.upgrades.boost;
   const mult = Math.pow(boost.multiplierPerLevel, boost.level) || 1;
-  return gen.level * gen.baseRate * mult;
+  return normalizeSci(toScientificParts(gen.level * gen.baseRate * mult));
 }
 
 function computeClickGain(s) {
   const c = s.upgrades.click;
   const boost = s.upgrades.boost;
   const mult = Math.pow(boost.multiplierPerLevel, boost.level) || 1;
-  return (1 + c.level * c.clickGain) * mult;
+  return normalizeSci(toScientificParts((1 + c.level * c.clickGain) * mult));
 }
 
 function saveLocal() {
-  try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
-  } catch {}
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch {}
 }
-
 function loadLocal() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
-
 function resetLocal() {
   localStorage.removeItem(SAVE_KEY);
 }
 
-// ----- UI rendering -----
+// ----- Rendu -----
 function render() {
-  els.scoreValue.textContent = formatNumber(state.score);
-  els.rateValue.textContent = (state.ratePerSec).toFixed(2);
+  els.scoreValue.textContent = formatSci(state.score);
+  els.rateValue.textContent = formatSci(state.ratePerSec);
   renderShop();
 }
 
@@ -186,6 +196,7 @@ function renderShop() {
   items.forEach(item => {
     const u = state.upgrades[item.key];
     const costNow = upgradeCost(u);
+    const costSci = toScientificParts(costNow);
 
     const wrapper = document.createElement("div");
     wrapper.className = "shop-item";
@@ -200,29 +211,26 @@ function renderShop() {
 
     const costEl = document.createElement("div");
     costEl.className = "desc";
-    costEl.textContent = `Coût: ${formatNumber(costNow)}`;
-    costEl.style.color = Math.floor(state.score) < costNow ? "#ff6b6b" : "var(--muted)";
+    costEl.textContent = `Coût: ${formatSci(costSci)}`;
+    costEl.style.color = compareSci(state.score, costSci) < 0 ? "#ff6b6b" : "var(--muted)";
 
     const btn = document.createElement("button");
     btn.className = "btn primary";
     btn.textContent = "Acheter";
-    btn.disabled = Math.floor(state.score) < costNow;
+    btn.disabled = compareSci(state.score, costSci) < 0;
 
-    // ✅ Listener bien attaché AVANT insertion dans le DOM
     btn.addEventListener("click", () => {
-      debugLog("Avant achat", state.score, costNow, u.level);
-      if (Math.floor(state.score) >= costNow) {
-        state.score -= costNow;
+      debugLog("Avant achat", formatSci(state.score), formatSci(costSci), u.level);
+      if (compareSci(state.score, costSci) >= 0) {
+        state.score = subSci(state.score, costSci);
         u.level++;
         state.ratePerSec = computeRatePerSec(state);
-        debugLog("Après achat", state.score, u.level);
+        debugLog("Après achat", formatSci(state.score), u.level);
         saveLocal();
         scheduleCloudSave();
-        renderScore();
-        renderShop(); // on rafraîchit la boutique uniquement ici
+        render();
       }
     });
-
 
     buy.appendChild(costEl);
     buy.appendChild(btn);
@@ -231,43 +239,28 @@ function renderShop() {
     els.shopList.appendChild(wrapper);
   });
 }
-
-
 // ----- Boucle de jeu -----
 let lastTs = performance.now();
-function renderScore() {
-  els.scoreValue.textContent = formatNumber(state.score);
-  els.rateValue.textContent = state.ratePerSec.toFixed(2);
-}
-
 function tick(now) {
   const dt = (now - lastTs) / 1000;
   lastTs = now;
 
-  const gain = state.ratePerSec * dt;
-  if (gain > 0) {
-    state.score += gain;
-    state.totalEarned += gain;
-    renderScore();
+  // Gain passif
+  const gain = normalizeSci(toScientificParts(fromScientificParts(state.ratePerSec.mantisse, state.ratePerSec.exposant) * dt));
+  if (compareSci(gain, { mantisse: 0, exposant: 0 }) > 0) {
+    state.score = addSci(state.score, gain);
+    state.totalEarned = addSci(state.totalEarned, gain);
   }
 
+  render();
   requestAnimationFrame(tick);
 }
-
-// Au démarrage
-renderScore();
-renderShop();
-requestAnimationFrame((ts) => {
-  lastTs = ts;
-  requestAnimationFrame(tick);
-});
-
 
 // ----- Interactions -----
 els.clickBtn.addEventListener("click", () => {
   const add = computeClickGain(state);
-  state.score += add;
-  state.totalEarned += add;
+  state.score = addSci(state.score, add);
+  state.totalEarned = addSci(state.totalEarned, add);
   saveLocal();
   scheduleCloudSave();
   render();
@@ -292,7 +285,6 @@ els.saveNameBtn.addEventListener("click", async () => {
   saveLocal();
   if (auth && uid) {
     try {
-      // Pas obligatoire, mais sympa d’avoir displayName dans Auth aussi
       await updateProfile(auth.currentUser, { displayName: state.displayName || null });
     } catch {}
     await cloudUpsert();
@@ -305,13 +297,10 @@ function sanitizeName(x) {
   return x.replace(/[^\p{L}\p{N}_\- ]/gu, "").trim().slice(0, 16);
 }
 
-// ----- Sauvegarde Cloud (Firestore) -----
-// On enregistre un document par utilisateur dans "players/{uid}".
-// Champs: displayName, bestScore, updatedAt, createdAt
+// ----- Sauvegarde Cloud -----
 let saveTimer = null;
 function scheduleCloudSave() {
   if (!firebaseEnabled || !uid) return;
-  // Sauvegarde 2s après la dernière action
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     cloudUpsert();
@@ -324,10 +313,9 @@ async function manualCloudSave() {
     alert("Cloud non connecté. La sauvegarde locale fonctionne.");
     return;
   }
-
   debugLog("💾 Sauvegarde cloud manuelle demandée...");
   try {
-    await cloudUpsert(); // utilise la version corrigée avec arrondi et logs
+    await cloudUpsert();
     debugLog("✅ Sauvegarde cloud terminée.");
     alert("Sauvegarde Cloud effectuée avec succès !");
   } catch (err) {
@@ -336,7 +324,6 @@ async function manualCloudSave() {
     alert("Impossible de sauvegarder dans le cloud : " + (err.code || err.message));
   }
 }
-
 
 async function cloudUpsert() {
   if (!db || !uid) {
@@ -347,19 +334,18 @@ async function cloudUpsert() {
   const ref = doc(db, "players", uid);
   const snap = await getDoc(ref);
 
-  // On prend le meilleur score entre local et cloud
-  const bestScoreLocal = Math.max(state.score, snap.exists() ? fromScientificParts(snap.data().bestScoreMantisse || 0, snap.data().bestScoreExpo || 0) : 0);
-
-  // Conversion en mantisse/exposant
-  const scoreParts = toScientificParts(bestScoreLocal);
-  const rateParts = toScientificParts(state.ratePerSec);
+  const bestScoreLocal = compareSci(state.score, snap.exists()
+    ? { mantisse: snap.data().bestScoreMantisse || 0, exposant: snap.data().bestScoreExpo || 0 }
+    : { mantisse: 0, exposant: 0 }) >= 0
+    ? state.score
+    : { mantisse: snap.data().bestScoreMantisse || 0, exposant: snap.data().bestScoreExpo || 0 };
 
   const payload = {
     displayName: state.displayName || null,
-    bestScoreMantisse: scoreParts.mantisse,
-    bestScoreExpo: scoreParts.exposant,
-    rateMantisse: rateParts.mantisse,
-    rateExpo: rateParts.exposant,
+    bestScoreMantisse: bestScoreLocal.mantisse,
+    bestScoreExpo: bestScoreLocal.exposant,
+    rateMantisse: state.ratePerSec.mantisse,
+    rateExpo: state.ratePerSec.exposant,
     updatedAt: serverTimestamp()
   };
 
@@ -383,30 +369,30 @@ async function cloudUpsert() {
   }
 }
 
-
-
 async function resetCloud() {
   if (!db || !uid) return;
   const ref = doc(db, "players", uid);
   await setDoc(ref, {
     displayName: state.displayName || null,
-    bestScore: 0,
+    bestScoreMantisse: 0,
+    bestScoreExpo: 0,
+    rateMantisse: 0,
+    rateExpo: 0,
     updatedAt: serverTimestamp(),
     createdAt: serverTimestamp()
   });
 }
-
-// ----- Leaderboard (live) -----
+// ----- Leaderboard -----
 function initLeaderboard() {
   if (!db) return;
-  const q = query(collection(db, "players"), orderBy("bestScore", "desc"), limit(10));
+  const q = query(collection(db, "players"), orderBy("bestScoreExpo", "desc"), limit(10));
   onSnapshot(q, (snap) => {
     const rows = [];
-    snap.forEach((doc) => {
-      const d = doc.data();
+    snap.forEach((docSnap) => {
+      const d = docSnap.data();
       rows.push({
         name: d.displayName || "Anonyme",
-        score: d.bestScore || 0
+        score: { mantisse: d.bestScoreMantisse || 0, exposant: d.bestScoreExpo || 0 }
       });
     });
     renderLeaderboard(rows);
@@ -416,15 +402,13 @@ function initLeaderboard() {
 function renderLeaderboard(rows) {
   els.leaderboardList.innerHTML = "";
   rows.forEach((r, idx) => {
-    const scoreValue = fromScientificParts(r.bestScoreMantisse || 0, r.bestScoreExpo || 0);
     const li = document.createElement("li");
-    li.textContent = `#${idx + 1} — ${r.name}: ${formatNumber(scoreValue)}`;
+    li.textContent = `#${idx + 1} — ${r.name}: ${formatSci(r.score)}`;
     els.leaderboardList.appendChild(li);
   });
 }
 
-
-// ----- Auth anonyme + chargement du profil cloud -----
+// ----- Auth anonyme + profil cloud -----
 async function initAuthAndCloud() {
   if (!firebaseEnabled) {
     console.info("Mode local uniquement. Le leaderboard ne sera pas chargé.");
@@ -436,7 +420,7 @@ async function initAuthAndCloud() {
       if (!user) return;
       uid = user.uid;
 
-      // Charger un pseudo local si existant
+      // Charger pseudo local si existant
       if (state.displayName) {
         els.displayNameInput.value = state.displayName;
         try { await updateProfile(user, { displayName: state.displayName }); } catch {}
@@ -446,24 +430,23 @@ async function initAuthAndCloud() {
         saveLocal();
       }
 
-      // Récupérer meilleur score pour ne pas le perdre
+      // Lecture du doc cloud
       try {
         const ref = doc(db, "players", uid);
         const snap = await getDoc(ref);
-        if (snap.exists()) {
-          const d = snap.data();
-          // On ne remplace pas ta progression locale, on ne fait que lire le bestScore
-          // et l’utiliser pour l’affichage (via leaderboard). La progression locale continue.
-        } else {
+        if (!snap.exists()) {
           await setDoc(ref, {
             displayName: state.displayName || null,
-            bestScore: Math.floor(state.score),
+            bestScoreMantisse: state.score.mantisse,
+            bestScoreExpo: state.score.exposant,
+            rateMantisse: state.ratePerSec.mantisse,
+            rateExpo: state.ratePerSec.exposant,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           });
         }
       } catch (e) {
-        console.warn("Lecture/écriture Firestore échouée (continuation en local):", e);
+        console.warn("Lecture/écriture Firestore échouée :", e);
       }
 
       initLeaderboard();
@@ -474,7 +457,7 @@ async function initAuthAndCloud() {
   }
 }
 
-// ----- Démarrage -----
+// ----- Init -----
 function init() {
   // Recalcule la production au chargement
   state.ratePerSec = computeRatePerSec(state);
@@ -491,15 +474,11 @@ function init() {
     requestAnimationFrame(tick);
   });
 
-  // Sauvegarde périodique locale
-  setInterval(() => {
-    saveLocal();
-  }, 5000);
+  // Sauvegarde locale périodique
+  setInterval(saveLocal, 5000);
 
-  // Sauvegarde cloud périodique si connecté
-  setInterval(() => {
-    scheduleCloudSave();
-  }, 15000);
+  // Sauvegarde cloud périodique
+  setInterval(scheduleCloudSave, 15000);
 
   // Firebase
   initAuthAndCloud();
