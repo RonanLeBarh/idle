@@ -1,8 +1,8 @@
 export const firebaseConfig = {
-  apiKey: import.meta.env.FIREBASE_API_KEY,
-  authDomain: import.meta.env.FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.FIREBASE_APP_ID
+  apiKey: "AIzaSyDJwHqJdmUKayrxTnHrcGHcCLCm9lmOtMY",
+  authDomain: "idleclick-5fc91.firebaseapp.com",
+  projectId: "idleclick-5fc91",
+  storageBucket: "idleclick-5fc91.firebasestorage.app",
+  messagingSenderId: "166564180674",
+  appId: "1:166564180674:web:75dce2c2eb0cc6556fc15b"
 };
