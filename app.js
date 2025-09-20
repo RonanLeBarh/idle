@@ -67,9 +67,10 @@ const els = {
 };
 
 // ----- Modèle de données du jeu -----
-const GAME_VERSION = 1;
+const GAME_VERSION = 0.4;
 const SAVE_KEY = "idleclick-save-v" + GAME_VERSION;
-
+debugLog("Jeu version", GAME_VERSION);
+// État par défaut
 const defaultState = {
   score: 0,
   totalEarned: 0,
