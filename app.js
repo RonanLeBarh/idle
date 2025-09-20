@@ -75,8 +75,21 @@ function debugLog(...args) {
   }
 }
 
+// Convertit un nombre en mantisse + exposant
+function toScientificParts(num) {
+  if (num === 0) return { mantisse: 0, exposant: 0 };
+  const exp = Math.floor(Math.log10(Math.abs(num)));
+  const mantisse = num / Math.pow(10, exp);
+  return { mantisse, exposant: exp };
+}
+
+// Reconvertit mantisse + exposant en nombre
+function fromScientificParts(mantisse, exposant) {
+  return mantisse * Math.pow(10, exposant);
+}
+
 // ----- Modèle de données du jeu -----
-const GAME_VERSION = 0.12; // Incrémentez si le modèle de données change
+const GAME_VERSION = 0.13; // Incrémentez si le modèle de données change
 const SAVE_KEY = "idleclick-save-v" + GAME_VERSION;
 console.log("Jeu version", GAME_VERSION);
 
@@ -334,20 +347,19 @@ async function cloudUpsert() {
   const ref = doc(db, "players", uid);
   const snap = await getDoc(ref);
 
-  // ✅ Toujours un entier positif
-  const bestScoreInt = Math.max(
-    0,
-    Math.floor(
-      Math.max(
-        state.score,
-        snap.exists() ? (snap.data().bestScore || 0) : 0
-      )
-    )
-  );
+  // On prend le meilleur score entre local et cloud
+  const bestScoreLocal = Math.max(state.score, snap.exists() ? fromScientificParts(snap.data().bestScoreMantisse || 0, snap.data().bestScoreExpo || 0) : 0);
+
+  // Conversion en mantisse/exposant
+  const scoreParts = toScientificParts(bestScoreLocal);
+  const rateParts = toScientificParts(state.ratePerSec);
 
   const payload = {
     displayName: state.displayName || null,
-    bestScore: bestScoreInt,
+    bestScoreMantisse: scoreParts.mantisse,
+    bestScoreExpo: scoreParts.exposant,
+    rateMantisse: rateParts.mantisse,
+    rateExpo: rateParts.exposant,
     updatedAt: serverTimestamp()
   };
 
@@ -370,6 +382,7 @@ async function cloudUpsert() {
     alert("Impossible de sauvegarder dans le cloud : " + (err.code || err.message));
   }
 }
+
 
 
 async function resetCloud() {
@@ -403,11 +416,13 @@ function initLeaderboard() {
 function renderLeaderboard(rows) {
   els.leaderboardList.innerHTML = "";
   rows.forEach((r, idx) => {
+    const scoreValue = fromScientificParts(r.bestScoreMantisse || 0, r.bestScoreExpo || 0);
     const li = document.createElement("li");
-    li.textContent = `#${idx + 1} — ${r.name}: ${formatNumber(r.score)}`;
+    li.textContent = `#${idx + 1} — ${r.name}: ${formatNumber(scoreValue)}`;
     els.leaderboardList.appendChild(li);
   });
 }
+
 
 // ----- Auth anonyme + chargement du profil cloud -----
 async function initAuthAndCloud() {
