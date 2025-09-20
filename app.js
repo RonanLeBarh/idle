@@ -76,7 +76,7 @@ function debugLog(...args) {
 }
 
 // ----- Modèle de données du jeu -----
-const GAME_VERSION = 0.11; // Incrémentez si le modèle de données change
+const GAME_VERSION = 0.12; // Incrémentez si le modèle de données change
 const SAVE_KEY = "idleclick-save-v" + GAME_VERSION;
 console.log("Jeu version", GAME_VERSION);
 
@@ -307,35 +307,70 @@ function scheduleCloudSave() {
 
 async function manualCloudSave() {
   if (!firebaseEnabled || !uid) {
+    debugLog("⛔ Sauvegarde cloud annulée : pas connecté à Firebase.");
     alert("Cloud non connecté. La sauvegarde locale fonctionne.");
     return;
   }
-  await cloudUpsert();
-  alert("Sauvegarde Cloud effectuée.");
-}
 
-async function cloudUpsert() {
-  if (!db || !uid) return;
-  const ref = doc(db, "players", uid);
-  const snap = await getDoc(ref);
-  const bestScore = Math.max(
-    Math.floor(state.score),
-    (snap.exists() && (snap.data().bestScore || 0)) || 0
-  );
-  const payload = {
-    displayName: state.displayName || null,
-    bestScore: bestScore,
-    updatedAt: serverTimestamp()
-  };
-  if (snap.exists()) {
-    await updateDoc(ref, payload);
-  } else {
-    await setDoc(ref, {
-      ...payload,
-      createdAt: serverTimestamp()
-    });
+  debugLog("💾 Sauvegarde cloud manuelle demandée...");
+  try {
+    await cloudUpsert(); // utilise la version corrigée avec arrondi et logs
+    debugLog("✅ Sauvegarde cloud terminée.");
+    alert("Sauvegarde Cloud effectuée avec succès !");
+  } catch (err) {
+    console.error("Erreur lors de la sauvegarde cloud :", err);
+    debugLog("⛔ Erreur lors de la sauvegarde cloud :", err.code || err.message);
+    alert("Impossible de sauvegarder dans le cloud : " + (err.code || err.message));
   }
 }
+
+
+async function cloudUpsert() {
+  if (!db || !uid) {
+    debugLog("⛔ CloudUpsert annulé : pas de connexion Firebase ou UID.");
+    return;
+  }
+
+  const ref = doc(db, "players", uid);
+  const snap = await getDoc(ref);
+
+  // ✅ Toujours un entier positif
+  const bestScoreInt = Math.max(
+    0,
+    Math.floor(
+      Math.max(
+        state.score,
+        snap.exists() ? (snap.data().bestScore || 0) : 0
+      )
+    )
+  );
+
+  const payload = {
+    displayName: state.displayName || null,
+    bestScore: bestScoreInt,
+    updatedAt: serverTimestamp()
+  };
+
+  debugLog("📤 Envoi vers Firestore :", JSON.stringify(payload));
+
+  try {
+    if (snap.exists()) {
+      await updateDoc(ref, payload);
+      debugLog("✅ Score mis à jour dans Firestore");
+    } else {
+      await setDoc(ref, {
+        ...payload,
+        createdAt: serverTimestamp()
+      });
+      debugLog("✅ Nouveau document créé dans Firestore");
+    }
+  } catch (err) {
+    console.error("Erreur Firestore :", err);
+    debugLog("⛔ Erreur Firestore :", err.code || err.message);
+    alert("Impossible de sauvegarder dans le cloud : " + (err.code || err.message));
+  }
+}
+
 
 async function resetCloud() {
   if (!db || !uid) return;
