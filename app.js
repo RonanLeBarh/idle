@@ -63,13 +63,23 @@ const els = {
   shopList: document.getElementById("shopList"),
   leaderboardList: document.getElementById("leaderboardList"),
   displayNameInput: document.getElementById("displayNameInput"),
-  saveNameBtn: document.getElementById("saveNameBtn")
+  saveNameBtn: document.getElementById("saveNameBtn"),
+  debug: document.getElementById("debug")
 };
 
+// --- DEBUG LOG ---
+function debugLog(...args) {
+  console.log(...args);
+  if (els.debug) {
+    els.debug.textContent += args.join(" ") + "\n";
+  }
+}
+
 // ----- Modèle de données du jeu -----
-const GAME_VERSION = 0.5;
+const GAME_VERSION = 0.6;
 const SAVE_KEY = "idleclick-save-v" + GAME_VERSION;
 console.log("Jeu version", GAME_VERSION);
+
 // État par défaut
 const defaultState = {
   score: 0,
@@ -90,7 +100,7 @@ const defaultState = {
 };
 
 // ----- État runtime -----
-let state = loadLocal() || defaultState;
+let state = loadLocal() || structuredClone(defaultState);
 let uid = null; // défini après Auth anonyme
 
 // ----- Helpers -----
@@ -115,8 +125,7 @@ function computeRatePerSec(s) {
   const gen = s.upgrades.generator;
   const boost = s.upgrades.boost;
   const mult = Math.pow(boost.multiplierPerLevel, boost.level) || 1;
-  const baseRate = gen.level * gen.baseRate;
-  return baseRate * mult;
+  return gen.level * gen.baseRate * mult;
 }
 
 function computeClickGain(s) {
@@ -200,18 +209,20 @@ function renderShop() {
     const costEl = document.createElement("div");
     costEl.className = "desc";
     costEl.textContent = `Coût: ${formatNumber(cost)}`;
-    costEl.style.color = state.score < cost ? "#ff6b6b" : "var(--muted)";
+    costEl.style.color = Math.floor(state.score) < cost ? "#ff6b6b" : "var(--muted)";
 
 
     const btn = document.createElement("button");
     btn.className = "btn primary";
     btn.textContent = "Acheter";
-    btn.disabled = state.score < cost;
+    btn.disabled = Math.floor(state.score) < cost;
     btn.addEventListener("click", () => {
+      console.log("Avant achat", state.score, cost, u.level);
       if (Math.floor(state.score) >= cost) {
         state.score -= cost;
         u.level += 1;
         state.ratePerSec = computeRatePerSec(state);
+        console.log("Après achat", state.score, u.level);
         saveLocal();
         scheduleCloudSave();
         render();
@@ -246,16 +257,6 @@ function tick(now) {
 
 // ----- Interactions -----
 els.clickBtn.addEventListener("click", () => {
-  debugLog("Avant achat", state.score, cost, u.level);
-  if (Math.floor(state.score) >= cost) {
-    state.score -= cost;
-    u.level++;
-    state.ratePerSec = computeRatePerSec(state);
-    debugLog("Après achat", state.score, u.level);
-    saveLocal();
-    scheduleCloudSave();
-    render();
-  }
   const add = computeClickGain(state);
   state.score += add;
   state.totalEarned += add;
@@ -427,15 +428,6 @@ async function initAuthAndCloud() {
     console.warn("Auth anonyme impossible. Mode local uniquement.", e);
   }
 }
-// ----- Debug log -----
-function debugLog(...args) {
-  console.log(...args);
-  const dbg = document.getElementById("debug");
-  if (dbg) {
-    dbg.textContent += args.join(" ") + "\n";
-  }
-}
-
 
 // ----- Démarrage -----
 function init() {

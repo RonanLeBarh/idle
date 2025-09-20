@@ -4,13 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>IdleClick — Incremental</title>
-  <meta name="description" content="Un petit jeu idle/incrémental open web avec sauvegarde Firebase et classement global." />
-  <!-- Libre font (open-source) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
-<pre id="debug" style="background:#111;color:#0f0;padding:8px;font-size:12px;max-height:150px;overflow:auto;"></pre>
 <body>
   <header class="topbar">
     <div class="brand">
@@ -18,7 +13,7 @@
       <h1>IdleClick</h1>
     </div>
     <div class="session">
-      <input id="displayNameInput" class="name-input" type="text" maxlength="16" placeholder="Ton pseudo" aria-label="Pseudo" />
+      <input id="displayNameInput" class="name-input" type="text" maxlength="16" placeholder="Ton pseudo" />
       <button id="saveNameBtn" class="btn primary">Enregistrer</button>
     </div>
   </header>
@@ -26,44 +21,28 @@
   <main class="layout">
     <section class="panel score-panel">
       <h2>Score</h2>
-      <div class="score">
-        <span id="scoreValue">0</span>
-      </div>
-      <div class="rate">
-        <span>Production: </span>
-        <strong><span id="rateValue">0</span> / sec</strong>
-      </div>
+      <div class="score"><span id="scoreValue">0</span></div>
+      <div class="rate">Production: <strong><span id="rateValue">0</span> / sec</strong></div>
       <div class="actions">
-        <!-- Un bouton manuel pour cliquer (optionnel mais fun) -->
         <button id="clickBtn" class="btn jumbo">+1</button>
         <button id="saveCloudBtn" class="btn">Sauvegarde Cloud</button>
         <button id="resetBtn" class="btn danger">Reset</button>
       </div>
-      <p class="note">La progression se sauvegarde automatiquement en local et périodiquement dans le cloud.</p>
     </section>
 
     <section class="panel shop-panel">
       <h2>Boutique</h2>
-      <div id="shopList" class="shop-list">
-        <!-- Items générés via JS -->
-      </div>
+      <div id="shopList" class="shop-list"></div>
     </section>
 
     <section class="panel leaderboard-panel">
       <h2>Classement global</h2>
-      <ol id="leaderboardList" class="leaderboard">
-        <!-- Entrées en temps réel via JS -->
-      </ol>
-      <p class="note">Top 10 basé sur le score le plus élevé.</p>
+      <ol id="leaderboardList" class="leaderboard"></ol>
     </section>
   </main>
 
-  <footer class="footer">
-    <p>Fait avec du HTML/CSS/JS et Firebase (plan gratuit). Aucune ressource non-libre.</p>
-  </footer>
+  <pre id="debug" style="background:#111;color:#0f0;padding:8px;font-size:12px;max-height:150px;overflow:auto;"></pre>
 
-  <!-- Firebase SDKs (v9+ modular) par CDN -->
-  <!-- Remplace les valeurs dans app.js par ta config -->
-  <script type="module" src="./app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
