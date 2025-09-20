@@ -127,8 +127,9 @@ function formatSci(sci) {
   return sci.mantisse.toFixed(2) + "e" + sci.exposant;
 }
 // ----- État du jeu -----
-const GAME_VERSION = 0.14; // Incrémentez si le modèle de données change
+const GAME_VERSION = 0.15; // Incrémentez si le modèle de données change
 const SAVE_KEY = "idleclick-save-v" + GAME_VERSION;
+console.log("Jeu version", GAME_VERSION);
 
 const defaultState = {
   score: { mantisse: 0, exposant: 0 },
@@ -181,10 +182,10 @@ function resetLocal() {
 function render() {
   els.scoreValue.textContent = formatSci(state.score);
   els.rateValue.textContent = formatSci(state.ratePerSec);
-  renderShop();
 }
 
 function renderShop() {
+
   const items = [
     { key: "generator", title: "Générateur", desc: "Produit passivement." },
     { key: "boost", title: "Boost", desc: "Multiplie la production." },
@@ -196,8 +197,9 @@ function renderShop() {
   items.forEach(item => {
     const u = state.upgrades[item.key];
     const costNow = upgradeCost(u);
-    const costSci = toScientificParts(costNow);
-
+    const costSci = normalizeSci(toScientificParts(costNow));
+    const currentScore = normalizeSci(state.score);
+  
     const wrapper = document.createElement("div");
     wrapper.className = "shop-item";
 
@@ -212,12 +214,12 @@ function renderShop() {
     const costEl = document.createElement("div");
     costEl.className = "desc";
     costEl.textContent = `Coût: ${formatSci(costSci)}`;
-    costEl.style.color = compareSci(state.score, costSci) < 0 ? "#ff6b6b" : "var(--muted)";
+    costEl.style.color = compareSci(currentScore, costSci) < 0 ? "#ff6b6b" : "var(--muted)";
 
     const btn = document.createElement("button");
     btn.className = "btn primary";
     btn.textContent = "Acheter";
-    btn.disabled = compareSci(state.score, costSci) < 0;
+    btn.disabled = compareSci(currentScore, costSci) < 0;
 
     btn.addEventListener("click", () => {
       debugLog("Avant achat", formatSci(state.score), formatSci(costSci), u.level);
@@ -245,16 +247,18 @@ function tick(now) {
   const dt = (now - lastTs) / 1000;
   lastTs = now;
 
-  // Gain passif
   const gain = normalizeSci(toScientificParts(fromScientificParts(state.ratePerSec.mantisse, state.ratePerSec.exposant) * dt));
   if (compareSci(gain, { mantisse: 0, exposant: 0 }) > 0) {
     state.score = addSci(state.score, gain);
     state.totalEarned = addSci(state.totalEarned, gain);
+    els.scoreValue.textContent = formatSci(state.score);
+    els.rateValue.textContent = formatSci(state.ratePerSec);
+    renderShop(); // rafraîchit l’état des boutons
   }
 
-  render();
   requestAnimationFrame(tick);
 }
+
 
 // ----- Interactions -----
 els.clickBtn.addEventListener("click", () => {
