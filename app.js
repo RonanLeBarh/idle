@@ -53,8 +53,18 @@ function debugLog(...args) {
 let state = loadLocal() || structuredClone(defaultState);
 let userId = null;
 let playerId = null;
+let sessionId = null;
 let unlockedAchievementIds = [];
 let allAchievements = [];
+
+function getOrCreateSessionId() {
+  let sid = localStorage.getItem('idleclick-session-id');
+  if (!sid) {
+    sid = 'anon_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+    localStorage.setItem('idleclick-session-id', sid);
+  }
+  return sid;
+}
 
 function render() {
   els.scoreValue.textContent = formatSci(state.score);
@@ -210,7 +220,7 @@ els.saveNameBtn.addEventListener("click", async () => {
   state.displayName = name || null;
   saveLocal(state);
 
-  if (userId && playerId) {
+  if (playerId) {
     await cloudUpsert();
   }
 
@@ -248,7 +258,7 @@ if (els.prestigeBtn) {
 let saveTimer = null;
 
 function scheduleCloudSave() {
-  if (!userId) return;
+  if (!playerId) return;
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     cloudUpsert();
@@ -256,8 +266,8 @@ function scheduleCloudSave() {
 }
 
 async function manualCloudSave() {
-  if (!userId) {
-    alert("Cloud non connecté. La sauvegarde locale fonctionne.");
+  if (!playerId) {
+    alert("Connexion au cloud en cours...");
     return;
   }
 
@@ -271,7 +281,7 @@ async function manualCloudSave() {
 }
 
 async function cloudUpsert() {
-  if (!userId || !playerId) return;
+  if (!playerId) return;
 
   const payload = {
     display_name: state.displayName || null,
@@ -300,7 +310,7 @@ async function cloudUpsert() {
 }
 
 async function resetCloud() {
-  if (!userId || !playerId) return;
+  if (!playerId) return;
 
   const { error } = await supabase
     .from('players')
@@ -422,41 +432,24 @@ function showNotification(message) {
 }
 
 async function initAuthAndCloud() {
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  sessionId = getOrCreateSessionId();
 
-  if (sessionError) {
-    console.error('Session error:', sessionError);
-  }
-
-  if (!session) {
-    const { data, error } = await supabase.auth.signInAnonymously();
-    if (error) {
-      console.error('Anonymous sign in failed:', error);
-      return;
-    }
-  }
-
-  supabase.auth.onAuthStateChange(async (event, session) => {
-    if (!session?.user) return;
-
-    userId = session.user.id;
-
+  try {
     let { data: player, error } = await supabase
       .from('players')
       .select('*')
-      .eq('user_id', userId)
+      .eq('session_id', sessionId)
       .maybeSingle();
 
-    if (error) {
+    if (error && error.code !== 'PGRST116') {
       console.error('Failed to load player:', error);
-      return;
     }
 
     if (!player) {
       const { data: newPlayer, error: insertError } = await supabase
         .from('players')
         .insert({
-          user_id: userId,
+          session_id: sessionId,
           display_name: state.displayName,
           best_score_mantisse: state.score.mantisse,
           best_score_expo: state.score.exposant,
@@ -498,7 +491,9 @@ async function initAuthAndCloud() {
     renderAchievements();
     initLeaderboard();
     scheduleCloudSave();
-  });
+  } catch (err) {
+    console.error('Cloud initialization failed:', err);
+  }
 }
 
 function init() {
