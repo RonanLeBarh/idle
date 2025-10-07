@@ -1,66 +1,48 @@
-// app.js (ES module)
-// Jeu idle/incrémental avec sauvegarde locale + Firebase et classement global.
-// Remplace la CONFIG Firebase plus bas puis déploie sur GitHub Pages.
-
-// ----- Firebase (v9 modular via CDN) -----
+import { supabase } from './supabase.js';
 import {
-  initializeApp
-} from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
+  toScientificParts,
+  fromScientificParts,
+  normalizeSci,
+  addSci,
+  subSci,
+  compareSci,
+  formatSci,
+  sanitizeName
+} from './utils.js';
 import {
-  getAuth,
-  signInAnonymously,
-  onAuthStateChanged,
-  updateProfile
-} from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
+  defaultState,
+  upgradeCost,
+  computeRatePerSec,
+  computeClickGain,
+  canPrestige,
+  calculatePrestigeGain,
+  saveLocal,
+  loadLocal
+} from './gameState.js';
 import {
-  getFirestore,
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  serverTimestamp,
-  collection,
-  query,
-  orderBy,
-  limit,
-  onSnapshot
-} from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
+  loadAchievements,
+  loadPlayerAchievements,
+  unlockAchievement,
+  checkAchievements
+} from './achievements.js';
 
-// ----- Config Firebase -----
-import { firebaseConfig } from './firebaseConfig.js';
-
-// Initialisation conditionnelle (permet d'héberger même sans config remplie)
-let app, auth, db;
-let firebaseEnabled = true;
-try {
-  if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "REPLACE_ME") {
-    firebaseEnabled = false;
-    console.warn("Firebase config manquante. Le jeu tournera en local uniquement.");
-  } else {
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-  }
-} catch (e) {
-  firebaseEnabled = false;
-  console.warn("Firebase non initialisé. Mode local seulement.", e);
-}
-
-// ----- Sélecteurs UI -----
 const els = {
   scoreValue: document.getElementById("scoreValue"),
   rateValue: document.getElementById("rateValue"),
   clickBtn: document.getElementById("clickBtn"),
   saveCloudBtn: document.getElementById("saveCloudBtn"),
   resetBtn: document.getElementById("resetBtn"),
+  prestigeBtn: document.getElementById("prestigeBtn"),
   shopList: document.getElementById("shopList"),
   leaderboardList: document.getElementById("leaderboardList"),
   displayNameInput: document.getElementById("displayNameInput"),
   saveNameBtn: document.getElementById("saveNameBtn"),
+  achievementsList: document.getElementById("achievementsList"),
+  prestigeLevel: document.getElementById("prestigeLevel"),
+  prestigePoints: document.getElementById("prestigePoints"),
   debug: document.getElementById("debug")
 };
 
-// --- DEBUG LOG ---
 function debugLog(...args) {
   console.log(...args);
   if (els.debug) {
@@ -68,116 +50,25 @@ function debugLog(...args) {
   }
 }
 
-// ----- Mantisse/Exposant -----
-function toScientificParts(num) {
-  if (num === 0) return { mantisse: 0, exposant: 0 };
-  const exp = Math.floor(Math.log10(Math.abs(num)));
-  const mantisse = num / Math.pow(10, exp);
-  return { mantisse, exposant: exp };
-}
-function fromScientificParts(m, e) {
-  return m * Math.pow(10, e);
-}
-function normalizeSci(sci) {
-  if (sci.mantisse === 0) return { mantisse: 0, exposant: 0 };
-  let m = sci.mantisse;
-  let e = sci.exposant;
-  while (Math.abs(m) >= 10) { m /= 10; e++; }
-  while (Math.abs(m) < 1 && m !== 0) { m *= 10; e--; }
-  return { mantisse: m, exposant: e };
-}
-function addSci(a, b) {
-  if (a.mantisse === 0) return { ...b };
-  if (b.mantisse === 0) return { ...a };
-  if (a.exposant > b.exposant) {
-    const diff = a.exposant - b.exposant;
-    return normalizeSci({ mantisse: a.mantisse + b.mantisse / Math.pow(10, diff), exposant: a.exposant });
-  } else {
-    const diff = b.exposant - a.exposant;
-    return normalizeSci({ mantisse: a.mantisse / Math.pow(10, diff) + b.mantisse, exposant: b.exposant });
-  }
-}
-function subSci(a, b) {
-  return addSci(a, { mantisse: -b.mantisse, exposant: b.exposant });
-}
-function compareSci(a, b) {
-  if (a.exposant > b.exposant) return 1;
-  if (a.exposant < b.exposant) return -1;
-  if (a.mantisse > b.mantisse) return 1;
-  if (a.mantisse < b.mantisse) return -1;
-  return 0;
-}
-
-// ----- Formatage -----
-const units = ["", "k", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc"];
-function formatSci(sci) {
-  if (sci.mantisse === 0) return "0";
-  let tier = Math.floor(sci.exposant / 3);
-  if (tier < 0) tier = 0; // ✅ empêche les index négatifs
-  if (tier < units.length) {
-    const scaled = fromScientificParts(sci.mantisse, sci.exposant - tier * 3);
-    return scaled.toFixed(scaled < 10 ? 2 : scaled < 100 ? 1 : 0) + units[tier];
-  }
-  return sci.mantisse.toFixed(2) + "e" + sci.exposant;
-}
-
-// ----- État du jeu -----
-const GAME_VERSION = 1.0; // Incrémentez si le modèle de données change
-const SAVE_KEY = "idleclick-save-v" + GAME_VERSION;
-console.log("Jeu version", GAME_VERSION);
-
-const defaultState = {
-  score: { mantisse: 0, exposant: 0 },
-  totalEarned: { mantisse: 0, exposant: 0 },
-  ratePerSec: { mantisse: 0, exposant: 0 },
-  upgrades: {
-    generator: { level: 0, baseCost: 10, costMult: 1.15, baseRate: 0.2 },
-    boost:     { level: 0, baseCost: 50, costMult: 1.25, multiplierPerLevel: 1.5 },
-    click:     { level: 0, baseCost: 20, costMult: 1.18, clickGain: 1 }
-  },
-  displayName: null
-};
-
 let state = loadLocal() || structuredClone(defaultState);
-let uid = null;
+let userId = null;
+let playerId = null;
+let unlockedAchievementIds = [];
+let allAchievements = [];
 
-// ----- Helpers -----
-function upgradeCost(u) {
-  return Math.floor(u.baseCost * Math.pow(u.costMult, u.level));
-}
-
-function computeRatePerSec(s) {
-  const gen = s.upgrades.generator;
-  const boost = s.upgrades.boost;
-  const mult = Math.pow(boost.multiplierPerLevel, boost.level) || 1;
-  return normalizeSci(toScientificParts(gen.level * gen.baseRate * mult));
-}
-
-function computeClickGain(s) {
-  const c = s.upgrades.click;
-  const boost = s.upgrades.boost;
-  const mult = Math.pow(boost.multiplierPerLevel, boost.level) || 1;
-  return normalizeSci(toScientificParts((1 + c.level * c.clickGain) * mult));
-}
-
-function saveLocal() {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch {}
-}
-function loadLocal() {
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
-}
-function resetLocal() {
-  localStorage.removeItem(SAVE_KEY);
-}
-
-// ----- Rendu -----
 function render() {
   els.scoreValue.textContent = formatSci(state.score);
   els.rateValue.textContent = formatSci(state.ratePerSec) + " / sec";
-  renderShop()
+
+  if (els.prestigeLevel) {
+    els.prestigeLevel.textContent = state.prestigeLevel;
+  }
+  if (els.prestigePoints) {
+    els.prestigePoints.textContent = state.prestigePoints;
+  }
+
+  renderShop();
+  updatePrestigeButton();
 }
 
 function renderShop() {
@@ -194,7 +85,7 @@ function renderShop() {
     const costNow = upgradeCost(u);
     const costSci = normalizeSci(toScientificParts(costNow));
     const currentScore = normalizeSci(state.score);
-  
+
     const wrapper = document.createElement("div");
     wrapper.className = "shop-item";
 
@@ -217,14 +108,13 @@ function renderShop() {
     btn.disabled = compareSci(currentScore, costSci) < 0;
 
     btn.addEventListener("click", () => {
-      debugLog("Avant achat", normalizeSci(state.score), normalizeSci(costSci), u.level);
       if (compareSci(normalizeSci(state.score), costSci) >= 0) {
         state.score = subSci(state.score, costSci);
         u.level++;
         state.ratePerSec = computeRatePerSec(state);
-        debugLog("Après achat", normalizeSci(state.score), u.level);
-        saveLocal();
+        saveLocal(state);
         scheduleCloudSave();
+        checkAndUnlockAchievements();
         render();
       }
     });
@@ -256,7 +146,21 @@ function updateShopState() {
   });
 }
 
-// ----- Boucle de jeu -----
+function updatePrestigeButton() {
+  if (!els.prestigeBtn) return;
+
+  const canDo = canPrestige(state);
+  const gain = calculatePrestigeGain(state);
+
+  els.prestigeBtn.disabled = !canDo;
+
+  if (canDo) {
+    els.prestigeBtn.innerHTML = `Prestige<br><span style="font-size:12px">+${gain} points</span>`;
+  } else {
+    els.prestigeBtn.innerHTML = `Prestige<br><span style="font-size:12px">Requis: 1B</span>`;
+  }
+}
+
 let lastTs = performance.now();
 
 function tick(now) {
@@ -268,32 +172,33 @@ function tick(now) {
     state.score = addSci(state.score, gain);
     state.totalEarned = addSci(state.totalEarned, gain);
     els.scoreValue.textContent = formatSci(state.score);
-    els.rateValue.textContent = formatSci(state.ratePerSec) + " / sec";
-    updateShopState(); // ✅ rafraîchit juste l’état visuel
+    updateShopState();
+    updatePrestigeButton();
   }
 
   requestAnimationFrame(tick);
 }
 
-
-
-// ----- Interactions -----
 els.clickBtn.addEventListener("click", () => {
   const add = computeClickGain(state);
   state.score = addSci(state.score, add);
   state.totalEarned = addSci(state.totalEarned, add);
-  saveLocal();
+
+  els.clickBtn.classList.add('pulse');
+  setTimeout(() => els.clickBtn.classList.remove('pulse'), 100);
+
+  saveLocal(state);
   scheduleCloudSave();
+  checkAndUnlockAchievements();
   render();
 });
 
-els.resetBtn.addEventListener("click", () => {
+els.resetBtn.addEventListener("click", async () => {
   if (!confirm("Réinitialiser ta progression locale et cloud ?")) return;
   state = structuredClone(defaultState);
-  saveLocal();
-  resetCloud().finally(() => {
-    render();
-  });
+  saveLocal(state);
+  await resetCloud();
+  render();
 });
 
 els.saveCloudBtn.addEventListener("click", () => {
@@ -303,25 +208,47 @@ els.saveCloudBtn.addEventListener("click", () => {
 els.saveNameBtn.addEventListener("click", async () => {
   const name = sanitizeName(els.displayNameInput.value);
   state.displayName = name || null;
-  saveLocal();
-  if (auth && uid) {
-    try {
-      await updateProfile(auth.currentUser, { displayName: state.displayName || null });
-    } catch {}
+  saveLocal(state);
+
+  if (userId && playerId) {
     await cloudUpsert();
   }
+
   alert("Pseudo enregistré.");
 });
 
-function sanitizeName(x) {
-  if (!x) return "";
-  return x.replace(/[^\p{L}\p{N}_\- ]/gu, "").trim().slice(0, 16);
+if (els.prestigeBtn) {
+  els.prestigeBtn.addEventListener("click", async () => {
+    if (!canPrestige(state)) return;
+
+    const gain = calculatePrestigeGain(state);
+
+    if (!confirm(`Prestige: Réinitialiser la progression pour gagner ${gain} points de prestige?\n\nLes points de prestige augmentent ta production de 50% par niveau.`)) {
+      return;
+    }
+
+    state.prestigeLevel++;
+    state.prestigePoints += gain;
+    state.score = { mantisse: 0, exposant: 0 };
+    state.totalEarned = { mantisse: 0, exposant: 0 };
+    state.upgrades.generator.level = 0;
+    state.upgrades.boost.level = 0;
+    state.upgrades.click.level = 0;
+    state.ratePerSec = computeRatePerSec(state);
+
+    saveLocal(state);
+    await cloudUpsert();
+    checkAndUnlockAchievements();
+    render();
+
+    showNotification(`🔄 Prestige réussi ! +${gain} points`);
+  });
 }
 
-// ----- Sauvegarde Cloud -----
 let saveTimer = null;
+
 function scheduleCloudSave() {
-  if (!firebaseEnabled || !uid) return;
+  if (!userId) return;
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     cloudUpsert();
@@ -329,179 +256,267 @@ function scheduleCloudSave() {
 }
 
 async function manualCloudSave() {
-  if (!firebaseEnabled || !uid) {
-    debugLog("⛔ Sauvegarde cloud annulée : pas connecté à Firebase.");
+  if (!userId) {
     alert("Cloud non connecté. La sauvegarde locale fonctionne.");
     return;
   }
-  debugLog("💾 Sauvegarde cloud manuelle demandée...");
+
   try {
     await cloudUpsert();
-    debugLog("✅ Sauvegarde cloud terminée.");
-    alert("Sauvegarde Cloud effectuée avec succès !");
+    alert("Sauvegarde Cloud effectuée !");
   } catch (err) {
-    console.error("Erreur lors de la sauvegarde cloud :", err);
-    debugLog("⛔ Erreur lors de la sauvegarde cloud :", err.code || err.message);
-    alert("Impossible de sauvegarder dans le cloud : " + (err.code || err.message));
+    console.error("Erreur lors de la sauvegarde cloud:", err);
+    alert("Impossible de sauvegarder dans le cloud.");
   }
 }
 
 async function cloudUpsert() {
-  if (!db || !uid) {
-    debugLog("⛔ CloudUpsert annulé : pas de connexion Firebase ou UID.");
-    return;
-  }
-
-  const ref = doc(db, "players", uid);
-  const snap = await getDoc(ref);
-
-  const bestScoreLocal = compareSci(state.score, snap.exists()
-    ? { mantisse: snap.data().bestScoreMantisse || 0, exposant: snap.data().bestScoreExpo || 0 }
-    : { mantisse: 0, exposant: 0 }) >= 0
-    ? state.score
-    : { mantisse: snap.data().bestScoreMantisse || 0, exposant: snap.data().bestScoreExpo || 0 };
+  if (!userId || !playerId) return;
 
   const payload = {
-    displayName: state.displayName || null,
-    bestScoreMantisse: bestScoreLocal.mantisse,
-    bestScoreExpo: bestScoreLocal.exposant,
-    rateMantisse: state.ratePerSec.mantisse,
-    rateExpo: state.ratePerSec.exposant,
-    updatedAt: serverTimestamp()
+    display_name: state.displayName || null,
+    best_score_mantisse: state.score.mantisse,
+    best_score_expo: state.score.exposant,
+    current_score_mantisse: state.score.mantisse,
+    current_score_expo: state.score.exposant,
+    rate_mantisse: state.ratePerSec.mantisse,
+    rate_expo: state.ratePerSec.exposant,
+    prestige_level: state.prestigeLevel,
+    prestige_points: state.prestigePoints,
+    generator_level: state.upgrades.generator.level,
+    boost_level: state.upgrades.boost.level,
+    click_level: state.upgrades.click.level,
+    updated_at: new Date().toISOString()
   };
 
-  debugLog("📤 Envoi vers Firestore :", JSON.stringify(payload));
+  const { error } = await supabase
+    .from('players')
+    .update(payload)
+    .eq('id', playerId);
 
-  try {
-    if (snap.exists()) {
-      await updateDoc(ref, payload);
-      debugLog("✅ Score mis à jour dans Firestore");
-    } else {
-      await setDoc(ref, {
-        ...payload,
-        createdAt: serverTimestamp()
-      });
-      debugLog("✅ Nouveau document créé dans Firestore");
-    }
-  } catch (err) {
-    console.error("Erreur Firestore :", err);
-    debugLog("⛔ Erreur Firestore :", err.code || err.message);
-    alert("Impossible de sauvegarder dans le cloud : " + (err.code || err.message));
+  if (error) {
+    console.error('Failed to save to cloud:', error);
   }
 }
 
 async function resetCloud() {
-  if (!db || !uid) return;
-  const ref = doc(db, "players", uid);
-  await setDoc(ref, {
-    displayName: state.displayName || null,
-    bestScoreMantisse: 0,
-    bestScoreExpo: 0,
-    rateMantisse: 0,
-    rateExpo: 0,
-    updatedAt: serverTimestamp(),
-    createdAt: serverTimestamp()
-  });
+  if (!userId || !playerId) return;
+
+  const { error } = await supabase
+    .from('players')
+    .update({
+      best_score_mantisse: 0,
+      best_score_expo: 0,
+      current_score_mantisse: 0,
+      current_score_expo: 0,
+      rate_mantisse: 0,
+      rate_expo: 0,
+      prestige_level: 0,
+      prestige_points: 0,
+      generator_level: 0,
+      boost_level: 0,
+      click_level: 0,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', playerId);
+
+  if (error) {
+    console.error('Failed to reset cloud:', error);
+  }
 }
-// ----- Leaderboard -----
+
 function initLeaderboard() {
-  if (!db) return;
-  const q = query(collection(db, "players"), orderBy("bestScoreExpo", "desc"), limit(10));
-  onSnapshot(q, (snap) => {
-    const rows = [];
-    snap.forEach((docSnap) => {
-      const d = docSnap.data();
-      rows.push({
-        name: d.displayName || "Anonyme",
-        score: { mantisse: d.bestScoreMantisse || 0, exposant: d.bestScoreExpo || 0 }
-      });
-    });
-    renderLeaderboard(rows);
-  });
+  const channel = supabase
+    .channel('leaderboard')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'players' },
+      () => {
+        loadLeaderboard();
+      }
+    )
+    .subscribe();
+
+  loadLeaderboard();
+}
+
+async function loadLeaderboard() {
+  const { data, error } = await supabase
+    .from('players')
+    .select('display_name, best_score_mantisse, best_score_expo')
+    .order('best_score_expo', { ascending: false })
+    .order('best_score_mantisse', { ascending: false })
+    .limit(10);
+
+  if (error) {
+    console.error('Failed to load leaderboard:', error);
+    return;
+  }
+
+  renderLeaderboard(data || []);
 }
 
 function renderLeaderboard(rows) {
   els.leaderboardList.innerHTML = "";
   rows.forEach((r, idx) => {
     const li = document.createElement("li");
-    li.textContent = `#${idx + 1} — ${r.name}: ${formatSci(r.score)}`;
+    const score = { mantisse: r.best_score_mantisse || 0, exposant: r.best_score_expo || 0 };
+    li.textContent = `#${idx + 1} — ${r.display_name || "Anonyme"}: ${formatSci(score)}`;
     els.leaderboardList.appendChild(li);
   });
 }
 
-// ----- Auth anonyme + profil cloud -----
-async function initAuthAndCloud() {
-  if (!firebaseEnabled) {
-    console.info("Mode local uniquement. Le leaderboard ne sera pas chargé.");
-    return;
+async function renderAchievements() {
+  if (!els.achievementsList) return;
+
+  els.achievementsList.innerHTML = "";
+
+  allAchievements.forEach(achievement => {
+    const unlocked = unlockedAchievementIds.includes(achievement.id);
+
+    const item = document.createElement("div");
+    item.className = `achievement-item ${unlocked ? 'unlocked' : 'locked'}`;
+
+    item.innerHTML = `
+      <div class="achievement-icon">${achievement.icon}</div>
+      <div class="achievement-info">
+        <div class="achievement-title">${achievement.title}</div>
+        <div class="achievement-desc">${achievement.description}</div>
+      </div>
+      ${unlocked ? '<div class="achievement-check">✓</div>' : ''}
+    `;
+
+    els.achievementsList.appendChild(item);
+  });
+}
+
+async function checkAndUnlockAchievements() {
+  if (!playerId || allAchievements.length === 0) return;
+
+  const toUnlock = checkAchievements(state, unlockedAchievementIds);
+
+  for (const achievement of toUnlock) {
+    const success = await unlockAchievement(playerId, achievement.id);
+    if (success) {
+      unlockedAchievementIds.push(achievement.id);
+      showNotification(`🏆 ${achievement.title} débloqué !`);
+    }
   }
-  try {
-    await signInAnonymously(auth);
-    onAuthStateChanged(auth, async (user) => {
-      if (!user) return;
-      uid = user.uid;
 
-      // Charger pseudo local si existant
-      if (state.displayName) {
-        els.displayNameInput.value = state.displayName;
-        try { await updateProfile(user, { displayName: state.displayName }); } catch {}
-      } else if (user.displayName) {
-        state.displayName = sanitizeName(user.displayName);
-        els.displayNameInput.value = state.displayName || "";
-        saveLocal();
-      }
-
-      // Lecture du doc cloud
-      try {
-        const ref = doc(db, "players", uid);
-        const snap = await getDoc(ref);
-        if (!snap.exists()) {
-          await setDoc(ref, {
-            displayName: state.displayName || null,
-            bestScoreMantisse: state.score.mantisse,
-            bestScoreExpo: state.score.exposant,
-            rateMantisse: state.ratePerSec.mantisse,
-            rateExpo: state.ratePerSec.exposant,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          });
-        }
-      } catch (e) {
-        console.warn("Lecture/écriture Firestore échouée :", e);
-      }
-
-      initLeaderboard();
-      scheduleCloudSave();
-    });
-  } catch (e) {
-    console.warn("Auth anonyme impossible. Mode local uniquement.", e);
+  if (toUnlock.length > 0) {
+    renderAchievements();
   }
 }
 
-// ----- Init -----
+function showNotification(message) {
+  const notif = document.createElement('div');
+  notif.className = 'notification';
+  notif.textContent = message;
+  document.body.appendChild(notif);
+
+  setTimeout(() => notif.classList.add('show'), 10);
+  setTimeout(() => {
+    notif.classList.remove('show');
+    setTimeout(() => notif.remove(), 300);
+  }, 3000);
+}
+
+async function initAuthAndCloud() {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+  if (sessionError) {
+    console.error('Session error:', sessionError);
+  }
+
+  if (!session) {
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (error) {
+      console.error('Anonymous sign in failed:', error);
+      return;
+    }
+  }
+
+  supabase.auth.onAuthStateChange(async (event, session) => {
+    if (!session?.user) return;
+
+    userId = session.user.id;
+
+    let { data: player, error } = await supabase
+      .from('players')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Failed to load player:', error);
+      return;
+    }
+
+    if (!player) {
+      const { data: newPlayer, error: insertError } = await supabase
+        .from('players')
+        .insert({
+          user_id: userId,
+          display_name: state.displayName,
+          best_score_mantisse: state.score.mantisse,
+          best_score_expo: state.score.exposant,
+          current_score_mantisse: state.score.mantisse,
+          current_score_expo: state.score.exposant,
+          rate_mantisse: state.ratePerSec.mantisse,
+          rate_expo: state.ratePerSec.exposant,
+          prestige_level: state.prestigeLevel,
+          prestige_points: state.prestigePoints,
+          generator_level: state.upgrades.generator.level,
+          boost_level: state.upgrades.boost.level,
+          click_level: state.upgrades.click.level
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Failed to create player:', insertError);
+        return;
+      }
+
+      player = newPlayer;
+    }
+
+    playerId = player.id;
+
+    if (state.displayName) {
+      els.displayNameInput.value = state.displayName;
+    } else if (player.display_name) {
+      state.displayName = player.display_name;
+      els.displayNameInput.value = player.display_name;
+      saveLocal(state);
+    }
+
+    allAchievements = await loadAchievements();
+    const playerAchievements = await loadPlayerAchievements(playerId);
+    unlockedAchievementIds = playerAchievements.map(pa => pa.achievement_id);
+
+    renderAchievements();
+    initLeaderboard();
+    scheduleCloudSave();
+  });
+}
+
 function init() {
-  // Recalcule la production au chargement
   state.ratePerSec = computeRatePerSec(state);
 
-  // Pré-remplir pseudo
   if (state.displayName) {
     els.displayNameInput.value = state.displayName;
   }
 
-  // Lancer la boucle
   render();
   requestAnimationFrame((ts) => {
     lastTs = ts;
     requestAnimationFrame(tick);
   });
 
-  // Sauvegarde locale périodique
-  setInterval(saveLocal, 5000);
-
-  // Sauvegarde cloud périodique
+  setInterval(() => saveLocal(state), 5000);
   setInterval(scheduleCloudSave, 15000);
 
-  // Firebase
   initAuthAndCloud();
 }
 

@@ -23,8 +23,15 @@
       <h2>Score</h2>
       <div class="score"><span id="scoreValue">0</span></div>
       <div class="rate">Production: <strong><span id="rateValue">0</span></strong></div>
+      <div class="prestige-info">
+        <div class="prestige-stat">Prestige: <strong id="prestigeLevel">0</strong></div>
+        <div class="prestige-stat">Points: <strong id="prestigePoints">0</strong></div>
+      </div>
       <div class="actions">
         <button id="clickBtn" class="btn jumbo">+1</button>
+        <button id="prestigeBtn" class="btn accent" disabled>Prestige<br><span style="font-size:12px">Requis: 1B</span></button>
+      </div>
+      <div class="actions">
         <button id="saveCloudBtn" class="btn">Sauvegarde Cloud</button>
         <button id="resetBtn" class="btn danger">Reset</button>
       </div>
@@ -38,6 +45,11 @@
     <section class="panel leaderboard-panel">
       <h2>Classement global</h2>
       <ol id="leaderboardList" class="leaderboard"></ol>
+    </section>
+
+    <section class="panel achievements-panel">
+      <h2>Succès</h2>
+      <div id="achievementsList" class="achievements-list"></div>
     </section>
   </main>
 
