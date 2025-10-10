@@ -13,8 +13,8 @@
       <h1>IdleClick</h1>
     </div>
     <div class="session">
-      <input id="displayNameInput" class="name-input" type="text" maxlength="16" placeholder="Ton pseudo" />
-      <button id="saveNameBtn" class="btn primary">Enregistrer</button>
+      <span id="authStatus" class="auth-status">Session anonyme</span>
+      <button id="authBtn" class="btn primary">Se connecter</button>
     </div>
   </header>
 
@@ -52,6 +52,32 @@
       <div id="achievementsList" class="achievements-list"></div>
     </section>
   </main>
+
+  <div id="authModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="authModalTitle">Connexion</h2>
+        <button id="closeAuthModal" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="loginForm" class="auth-form">
+          <input id="loginEmail" type="email" placeholder="Email" class="input" />
+          <input id="loginPassword" type="password" placeholder="Mot de passe" class="input" />
+          <button id="loginBtn" class="btn primary full-width">Se connecter</button>
+          <p class="link-text">Pas encore de compte ? <a href="#" id="showRegister">Créer un compte</a></p>
+        </div>
+        <div id="registerForm" class="auth-form hidden">
+          <input id="displayNameInput" type="text" maxlength="16" placeholder="Pseudo" class="input" />
+          <input id="registerEmail" type="email" placeholder="Email" class="input" />
+          <input id="registerPassword" type="password" placeholder="Mot de passe" class="input" />
+          <input id="registerPasswordConfirm" type="password" placeholder="Confirmer le mot de passe" class="input" />
+          <button id="registerBtn" class="btn primary full-width">Créer un compte</button>
+          <p class="link-text">Déjà un compte ? <a href="#" id="showLogin">Se connecter</a></p>
+        </div>
+        <div id="authMessage" class="auth-message"></div>
+      </div>
+    </div>
+  </div>
 
   <pre id="debug" style="background:#111;color:#0f0;padding:8px;font-size:12px;max-height:150px;overflow:auto;"></pre>
 

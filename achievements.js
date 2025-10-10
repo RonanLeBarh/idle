@@ -72,17 +72,59 @@ export function checkAchievements(state, unlockedIds) {
       case 'score_1b':
         condition = scoreValue >= 1000000000;
         break;
+      case 'score_1t':
+        condition = scoreValue >= 1000000000000;
+        break;
+      case 'score_1qa':
+        condition = scoreValue >= 1e15;
+        break;
       case 'generator_10':
-        condition = state.upgrades.generator.level >= 10;
+        condition = state.upgrades.generator?.level >= 10;
         break;
       case 'boost_10':
-        condition = state.upgrades.boost.level >= 10;
+        condition = state.upgrades.boost?.level >= 10;
         break;
       case 'first_prestige':
         condition = state.prestigeLevel >= 1;
         break;
+      case 'prestige_5':
+        condition = state.prestigeLevel >= 5;
+        break;
       case 'prestige_10':
         condition = state.prestigeLevel >= 10;
+        break;
+      case 'prestige_25':
+        condition = state.prestigeLevel >= 25;
+        break;
+      case 'prestige_50':
+        condition = state.prestigeLevel >= 50;
+        break;
+      case 'clicks_10':
+        condition = (state.totalClicks || 0) >= 10;
+        break;
+      case 'clicks_100':
+        condition = (state.totalClicks || 0) >= 100;
+        break;
+      case 'clicks_1000':
+        condition = (state.totalClicks || 0) >= 1000;
+        break;
+      case 'clicks_10000':
+        condition = (state.totalClicks || 0) >= 10000;
+        break;
+      case 'upgrade_variety_3':
+        condition = Object.values(state.upgrades).filter(u => u.level > 0).length >= 3;
+        break;
+      case 'upgrade_variety_5':
+        condition = Object.values(state.upgrades).filter(u => u.level > 0).length >= 5;
+        break;
+      case 'upgrade_variety_8':
+        condition = Object.values(state.upgrades).filter(u => u.level > 0).length >= 8;
+        break;
+      case 'multiplier_master':
+        condition = ['clickMultiplier', 'autoMultiplier', 'globalMultiplier'].every(k => state.upgrades[k]?.level > 0);
+        break;
+      case 'automation_king':
+        condition = ['autoClicker', 'factory', 'laboratory', 'quantumCore', 'timeMachine', 'dimensionalRift'].every(k => state.upgrades[k]?.level > 0);
         break;
     }
 

@@ -11,7 +11,9 @@ import {
 } from './utils.js';
 import {
   defaultState,
+  upgradeDefinitions,
   upgradeCost,
+  isUpgradeUnlocked,
   computeRatePerSec,
   computeClickGain,
   canPrestige,
@@ -25,6 +27,13 @@ import {
   unlockAchievement,
   checkAchievements
 } from './achievements.js';
+import {
+  registerUser,
+  loginUser,
+  logoutUser,
+  getCurrentUser,
+  linkSessionToAccount
+} from './auth.js';
 
 const els = {
   scoreValue: document.getElementById("scoreValue"),
@@ -35,12 +44,28 @@ const els = {
   prestigeBtn: document.getElementById("prestigeBtn"),
   shopList: document.getElementById("shopList"),
   leaderboardList: document.getElementById("leaderboardList"),
-  displayNameInput: document.getElementById("displayNameInput"),
-  saveNameBtn: document.getElementById("saveNameBtn"),
   achievementsList: document.getElementById("achievementsList"),
   prestigeLevel: document.getElementById("prestigeLevel"),
   prestigePoints: document.getElementById("prestigePoints"),
-  debug: document.getElementById("debug")
+  debug: document.getElementById("debug"),
+  authStatus: document.getElementById("authStatus"),
+  authBtn: document.getElementById("authBtn"),
+  authModal: document.getElementById("authModal"),
+  closeAuthModal: document.getElementById("closeAuthModal"),
+  loginForm: document.getElementById("loginForm"),
+  registerForm: document.getElementById("registerForm"),
+  displayNameInput: document.getElementById("displayNameInput"),
+  loginEmail: document.getElementById("loginEmail"),
+  loginPassword: document.getElementById("loginPassword"),
+  loginBtn: document.getElementById("loginBtn"),
+  registerEmail: document.getElementById("registerEmail"),
+  registerPassword: document.getElementById("registerPassword"),
+  registerPasswordConfirm: document.getElementById("registerPasswordConfirm"),
+  registerBtn: document.getElementById("registerBtn"),
+  showRegister: document.getElementById("showRegister"),
+  showLogin: document.getElementById("showLogin"),
+  authMessage: document.getElementById("authMessage"),
+  authModalTitle: document.getElementById("authModalTitle")
 };
 
 function debugLog(...args) {
@@ -82,27 +107,32 @@ function render() {
 }
 
 function renderShop() {
-  const items = [
-    { key: "generator", title: "Générateur", desc: "Produit passivement." },
-    { key: "boost", title: "Boost", desc: "Multiplie la production." },
-    { key: "click", title: "Clic+", desc: "Augmente le gain par clic." }
-  ];
-
   els.shopList.innerHTML = "";
 
-  items.forEach(item => {
-    const u = state.upgrades[item.key];
-    const costNow = upgradeCost(u);
+  Object.keys(upgradeDefinitions).forEach(key => {
+    if (!isUpgradeUnlocked(state, key)) return;
+
+    const def = upgradeDefinitions[key];
+    const upgrade = state.upgrades[key];
+    const costNow = upgradeCost(key, upgrade.level);
     const costSci = normalizeSci(toScientificParts(costNow));
     const currentScore = normalizeSci(state.score);
 
     const wrapper = document.createElement("div");
     wrapper.className = "shop-item";
+    wrapper.dataset.key = key;
 
     const meta = document.createElement("div");
     meta.className = "meta";
-    meta.innerHTML = `<div class="title">${item.title} — Niveau ${u.level}</div>
-                      <div class="desc">${item.desc}</div>`;
+
+    const categoryIcon = {
+      'click': '👆',
+      'auto': '⚙️',
+      'multiplier': '✨'
+    }[def.category] || '📦';
+
+    meta.innerHTML = `<div class="title">${categoryIcon} ${def.title} — Niveau ${upgrade.level}</div>
+                      <div class="desc">${def.desc}</div>`;
 
     const buy = document.createElement("div");
     buy.className = "buy";
@@ -120,7 +150,7 @@ function renderShop() {
     btn.addEventListener("click", () => {
       if (compareSci(normalizeSci(state.score), costSci) >= 0) {
         state.score = subSci(state.score, costSci);
-        u.level++;
+        upgrade.level++;
         state.ratePerSec = computeRatePerSec(state);
         saveLocal(state);
         scheduleCloudSave();
@@ -139,12 +169,27 @@ function renderShop() {
 
 function updateShopState() {
   const items = els.shopList.querySelectorAll(".shop-item");
-  const keys = ["generator", "boost", "click"];
   const currentScore = normalizeSci(state.score);
+  let hasNewUnlocks = false;
 
-  items.forEach((itemEl, idx) => {
-    const u = state.upgrades[keys[idx]];
-    const costNow = upgradeCost(u);
+  Object.keys(upgradeDefinitions).forEach(key => {
+    const wasVisible = document.querySelector(`[data-key="${key}"]`);
+    const isNowUnlocked = isUpgradeUnlocked(state, key);
+
+    if (!wasVisible && isNowUnlocked) {
+      hasNewUnlocks = true;
+    }
+  });
+
+  if (hasNewUnlocks) {
+    renderShop();
+    return;
+  }
+
+  items.forEach((itemEl) => {
+    const key = itemEl.dataset.key;
+    const upgrade = state.upgrades[key];
+    const costNow = upgradeCost(key, upgrade.level);
     const costSci = normalizeSci(toScientificParts(costNow));
 
     const costEl = itemEl.querySelector(".desc");
@@ -193,6 +238,7 @@ els.clickBtn.addEventListener("click", () => {
   const add = computeClickGain(state);
   state.score = addSci(state.score, add);
   state.totalEarned = addSci(state.totalEarned, add);
+  state.totalClicks = (state.totalClicks || 0) + 1;
 
   els.clickBtn.classList.add('pulse');
   setTimeout(() => els.clickBtn.classList.remove('pulse'), 100);
@@ -215,16 +261,40 @@ els.saveCloudBtn.addEventListener("click", () => {
   manualCloudSave();
 });
 
-els.saveNameBtn.addEventListener("click", async () => {
-  const name = sanitizeName(els.displayNameInput.value);
-  state.displayName = name || null;
-  saveLocal(state);
-
-  if (playerId) {
-    await cloudUpsert();
+els.authBtn.addEventListener("click", () => {
+  if (userId) {
+    handleLogout();
+  } else {
+    openAuthModal();
   }
+});
 
-  alert("Pseudo enregistré.");
+els.closeAuthModal.addEventListener("click", () => {
+  closeAuthModal();
+});
+
+els.authModal.addEventListener("click", (e) => {
+  if (e.target === els.authModal) {
+    closeAuthModal();
+  }
+});
+
+els.showRegister.addEventListener("click", (e) => {
+  e.preventDefault();
+  showRegisterForm();
+});
+
+els.showLogin.addEventListener("click", (e) => {
+  e.preventDefault();
+  showLoginForm();
+});
+
+els.loginBtn.addEventListener("click", async () => {
+  await handleLogin();
+});
+
+els.registerBtn.addEventListener("click", async () => {
+  await handleRegister();
 });
 
 if (els.prestigeBtn) {
@@ -241,9 +311,11 @@ if (els.prestigeBtn) {
     state.prestigePoints += gain;
     state.score = { mantisse: 0, exposant: 0 };
     state.totalEarned = { mantisse: 0, exposant: 0 };
-    state.upgrades.generator.level = 0;
-    state.upgrades.boost.level = 0;
-    state.upgrades.click.level = 0;
+
+    Object.keys(state.upgrades).forEach(key => {
+      state.upgrades[key].level = 0;
+    });
+
     state.ratePerSec = computeRatePerSec(state);
 
     saveLocal(state);
@@ -383,6 +455,9 @@ async function renderAchievements() {
 
   allAchievements.forEach(achievement => {
     const unlocked = unlockedAchievementIds.includes(achievement.id);
+    const isHidden = achievement.is_hidden && !unlocked;
+
+    if (isHidden) return;
 
     const item = document.createElement("div");
     item.className = `achievement-item ${unlocked ? 'unlocked' : 'locked'}`;
@@ -431,10 +506,187 @@ function showNotification(message) {
   }, 3000);
 }
 
-async function initAuthAndCloud() {
-  sessionId = getOrCreateSessionId();
+function openAuthModal() {
+  els.authModal.classList.remove('hidden');
+  showLoginForm();
+}
 
-  try {
+function closeAuthModal() {
+  els.authModal.classList.add('hidden');
+  clearAuthMessage();
+}
+
+function showLoginForm() {
+  els.loginForm.classList.remove('hidden');
+  els.registerForm.classList.add('hidden');
+  els.authModalTitle.textContent = 'Connexion';
+  clearAuthMessage();
+}
+
+function showRegisterForm() {
+  els.loginForm.classList.add('hidden');
+  els.registerForm.classList.remove('hidden');
+  els.authModalTitle.textContent = 'Créer un compte';
+  clearAuthMessage();
+}
+
+function showAuthMessage(message, isError = false) {
+  els.authMessage.textContent = message;
+  els.authMessage.className = `auth-message ${isError ? 'error' : 'success'}`;
+}
+
+function clearAuthMessage() {
+  els.authMessage.textContent = '';
+  els.authMessage.className = 'auth-message';
+}
+
+async function handleLogin() {
+  const email = els.loginEmail.value.trim();
+  const password = els.loginPassword.value;
+
+  if (!email || !password) {
+    showAuthMessage('Veuillez remplir tous les champs', true);
+    return;
+  }
+
+  const result = await loginUser(email, password);
+
+  if (!result.success) {
+    showAuthMessage(result.error || 'Erreur de connexion', true);
+    return;
+  }
+
+  showAuthMessage('✓ Connexion réussie !', false);
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  closeAuthModal();
+}
+
+async function handleRegister() {
+  const displayName = sanitizeName(els.displayNameInput.value);
+  const email = els.registerEmail.value.trim();
+  const password = els.registerPassword.value;
+  const passwordConfirm = els.registerPasswordConfirm.value;
+
+  if (!displayName || !email || !password) {
+    showAuthMessage('Veuillez remplir tous les champs', true);
+    return;
+  }
+
+  if (password !== passwordConfirm) {
+    showAuthMessage('Les mots de passe ne correspondent pas', true);
+    return;
+  }
+
+  if (password.length < 6) {
+    showAuthMessage('Le mot de passe doit contenir au moins 6 caractères', true);
+    return;
+  }
+
+  const result = await registerUser(email, password, displayName);
+
+  if (!result.success) {
+    showAuthMessage(result.error || 'Erreur lors de la création du compte', true);
+    return;
+  }
+
+  if (result.needsEmailConfirmation) {
+    showAuthMessage('✓ Compte créé ! Vérifiez votre email pour confirmer.', false);
+  } else {
+    showAuthMessage('✓ Compte créé avec succès !', false);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    closeAuthModal();
+  }
+}
+
+async function handleLogout() {
+  if (!confirm('Se déconnecter ? Votre progression restera sauvegardée.')) return;
+
+  await logoutUser();
+  userId = null;
+  playerId = null;
+  updateAuthUI();
+  await initAuthAndCloud();
+}
+
+function updateAuthUI() {
+  if (userId) {
+    els.authStatus.textContent = state.displayName || 'Connecté';
+    els.authBtn.textContent = 'Déconnexion';
+    els.authBtn.classList.remove('primary');
+    els.authBtn.classList.add('danger');
+  } else {
+    els.authStatus.textContent = 'Session anonyme';
+    els.authBtn.textContent = 'Se connecter';
+    els.authBtn.classList.remove('danger');
+    els.authBtn.classList.add('primary');
+  }
+}
+
+async function initAuthAndCloud() {
+  const currentUser = await getCurrentUser();
+
+  if (currentUser) {
+    userId = currentUser.id;
+
+    let { data: player, error } = await supabase
+      .from('players')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Failed to load player:', error);
+    }
+
+    if (!player) {
+      sessionId = getOrCreateSessionId();
+      const linkResult = await linkSessionToAccount(sessionId, userId);
+
+      if (linkResult.success) {
+        playerId = linkResult.playerId;
+        const { data: linkedPlayer } = await supabase
+          .from('players')
+          .select('*')
+          .eq('id', playerId)
+          .single();
+
+        player = linkedPlayer;
+      } else {
+        const { data: newPlayer, error: insertError } = await supabase
+          .from('players')
+          .insert({
+            user_id: userId,
+            display_name: currentUser.user_metadata?.display_name || state.displayName,
+            best_score_mantisse: state.score.mantisse,
+            best_score_expo: state.score.exposant,
+            current_score_mantisse: state.score.mantisse,
+            current_score_expo: state.score.exposant,
+            rate_mantisse: state.ratePerSec.mantisse,
+            rate_expo: state.ratePerSec.exposant,
+            prestige_level: state.prestigeLevel,
+            prestige_points: state.prestigePoints
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Failed to create player:', insertError);
+          return;
+        }
+
+        player = newPlayer;
+      }
+    }
+
+    playerId = player.id;
+
+    if (player.display_name) {
+      state.displayName = player.display_name;
+      saveLocal(state);
+    }
+  } else {
+    sessionId = getOrCreateSessionId();
+
     let { data: player, error } = await supabase
       .from('players')
       .select('*')
@@ -458,10 +710,7 @@ async function initAuthAndCloud() {
           rate_mantisse: state.ratePerSec.mantisse,
           rate_expo: state.ratePerSec.exposant,
           prestige_level: state.prestigeLevel,
-          prestige_points: state.prestigePoints,
-          generator_level: state.upgrades.generator.level,
-          boost_level: state.upgrades.boost.level,
-          click_level: state.upgrades.click.level
+          prestige_points: state.prestigePoints
         })
         .select()
         .single();
@@ -476,24 +725,29 @@ async function initAuthAndCloud() {
 
     playerId = player.id;
 
-    if (state.displayName) {
-      els.displayNameInput.value = state.displayName;
-    } else if (player.display_name) {
+    if (player.display_name) {
       state.displayName = player.display_name;
-      els.displayNameInput.value = player.display_name;
       saveLocal(state);
     }
-
-    allAchievements = await loadAchievements();
-    const playerAchievements = await loadPlayerAchievements(playerId);
-    unlockedAchievementIds = playerAchievements.map(pa => pa.achievement_id);
-
-    renderAchievements();
-    initLeaderboard();
-    scheduleCloudSave();
-  } catch (err) {
-    console.error('Cloud initialization failed:', err);
   }
+
+  updateAuthUI();
+
+  allAchievements = await loadAchievements();
+  const playerAchievements = await loadPlayerAchievements(playerId);
+  unlockedAchievementIds = playerAchievements.map(pa => pa.achievement_id);
+
+  renderAchievements();
+  initLeaderboard();
+  scheduleCloudSave();
+
+  supabase.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session?.user) {
+      await initAuthAndCloud();
+    } else if (event === 'SIGNED_OUT') {
+      updateAuthUI();
+    }
+  });
 }
 
 function init() {
