@@ -39,7 +39,6 @@ const els = {
   scoreValue: document.getElementById("scoreValue"),
   rateValue: document.getElementById("rateValue"),
   clickBtn: document.getElementById("clickBtn"),
-  saveCloudBtn: document.getElementById("saveCloudBtn"),
   resetBtn: document.getElementById("resetBtn"),
   prestigeBtn: document.getElementById("prestigeBtn"),
   shopList: document.getElementById("shopList"),
@@ -255,10 +254,6 @@ els.resetBtn.addEventListener("click", async () => {
   saveLocal(state);
   await resetCloud();
   render();
-});
-
-els.saveCloudBtn.addEventListener("click", () => {
-  manualCloudSave();
 });
 
 els.authBtn.addEventListener("click", () => {
@@ -601,10 +596,19 @@ async function handleRegister() {
 async function handleLogout() {
   if (!confirm('Se déconnecter ? Votre progression restera sauvegardée.')) return;
 
+  await cloudUpsert();
+
   await logoutUser();
+
+  state = structuredClone(defaultState);
+  saveLocal(state);
+
   userId = null;
   playerId = null;
+
   updateAuthUI();
+  render();
+
   await initAuthAndCloud();
 }
 
@@ -680,10 +684,16 @@ async function initAuthAndCloud() {
 
     playerId = player.id;
 
-    if (player.display_name) {
-      state.displayName = player.display_name;
-      saveLocal(state);
-    }
+    state.displayName = player.display_name || state.displayName;
+    state.score = {
+      mantisse: player.current_score_mantisse || 0,
+      exposant: player.current_score_expo || 0
+    };
+    state.prestigeLevel = player.prestige_level || 0;
+    state.prestigePoints = player.prestige_points || 0;
+    state.ratePerSec = computeRatePerSec(state);
+
+    saveLocal(state);
   } else {
     sessionId = getOrCreateSessionId();
 
@@ -732,6 +742,7 @@ async function initAuthAndCloud() {
   }
 
   updateAuthUI();
+  render();
 
   allAchievements = await loadAchievements();
   const playerAchievements = await loadPlayerAchievements(playerId);

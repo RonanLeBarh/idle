@@ -96,12 +96,93 @@ export const upgradeDefinitions = {
   },
   supercharger: {
     title: "Surcharge",
-    desc: "Boost exponentiel temporaire",
+    desc: "Boost exponentiel",
     baseCost: 250000,
     costMult: 3.5,
     baseValue: 1.5,
     unlockAt: { type: 'prestige', level: 3 },
     category: 'multiplier'
+  },
+  antimatterReactor: {
+    title: "Réacteur Antimatière",
+    desc: "Énergie pure",
+    baseCost: 10000000,
+    costMult: 1.32,
+    baseValue: 10000,
+    unlockAt: { type: 'score', value: 5000000 },
+    category: 'auto'
+  },
+  neuralNetwork: {
+    title: "Réseau Neuronal",
+    desc: "Intelligence artificielle",
+    baseCost: 100000000,
+    costMult: 1.35,
+    baseValue: 75000,
+    unlockAt: { type: 'score', value: 50000000 },
+    category: 'auto'
+  },
+  cosmicHarvester: {
+    title: "Collecteur Cosmique",
+    desc: "Énergie stellaire",
+    baseCost: 1000000000,
+    costMult: 1.38,
+    baseValue: 500000,
+    unlockAt: { type: 'score', value: 500000000 },
+    category: 'auto'
+  },
+  singularity: {
+    title: "Singularité",
+    desc: "Trou noir productif",
+    baseCost: 10000000000,
+    costMult: 1.4,
+    baseValue: 5000000,
+    unlockAt: { type: 'score', value: 5000000000 },
+    category: 'auto'
+  },
+  megaClick: {
+    title: "Méga-Clic",
+    desc: "Augmente massivement le clic",
+    baseCost: 50000,
+    costMult: 1.8,
+    baseValue: 10,
+    unlockAt: { type: 'upgrade', upgrade: 'clickPower', level: 25 },
+    category: 'click'
+  },
+  hyperClick: {
+    title: "Hyper-Clic",
+    desc: "Clic surpuissant",
+    baseCost: 500000,
+    costMult: 2.2,
+    baseValue: 100,
+    unlockAt: { type: 'upgrade', upgrade: 'megaClick', level: 15 },
+    category: 'click'
+  },
+  efficiencyBoost: {
+    title: "Efficacité Accrue",
+    desc: "Réduit les coûts de 5%",
+    baseCost: 100000,
+    costMult: 4.0,
+    baseValue: 0.95,
+    unlockAt: { type: 'upgrade', upgrade: 'laboratory', level: 20 },
+    category: 'efficiency'
+  },
+  synergy: {
+    title: "Synergie",
+    desc: "Bonus selon diversité",
+    baseCost: 1000000,
+    costMult: 5.0,
+    baseValue: 1.1,
+    unlockAt: { type: 'prestige', level: 5 },
+    category: 'special'
+  },
+  prestigeAccelerator: {
+    title: "Accélérateur Prestige",
+    desc: "+10% bonus prestige par niveau",
+    baseCost: 5000000,
+    costMult: 6.0,
+    baseValue: 0.1,
+    unlockAt: { type: 'prestige', level: 10 },
+    category: 'special'
   }
 };
 
@@ -151,7 +232,13 @@ export function isUpgradeUnlocked(state, upgradeKey) {
 
 export function computeRatePerSec(state) {
   let total = 0;
-  const prestigeMult = 1 + (state.prestigeLevel * 0.5);
+  let prestigeMult = 1 + (state.prestigeLevel * 0.5);
+
+  const prestigeAccel = state.upgrades.prestigeAccelerator;
+  if (prestigeAccel && prestigeAccel.level > 0) {
+    const bonus = prestigeAccel.level * upgradeDefinitions.prestigeAccelerator.baseValue;
+    prestigeMult = 1 + (state.prestigeLevel * (0.5 + bonus));
+  }
 
   Object.keys(upgradeDefinitions).forEach(key => {
     const def = upgradeDefinitions[key];
@@ -162,10 +249,10 @@ export function computeRatePerSec(state) {
     }
   });
 
-  let clickMult = 1;
   let autoMult = 1;
   let globalMult = 1;
   let superchargeMult = 1;
+  let synergyMult = 1;
 
   Object.keys(upgradeDefinitions).forEach(key => {
     const def = upgradeDefinitions[key];
@@ -178,16 +265,27 @@ export function computeRatePerSec(state) {
       else if (key === 'globalMultiplier') globalMult *= mult;
       else if (key === 'supercharger') superchargeMult *= mult;
     }
+
+    if (key === 'synergy' && upgrade.level > 0) {
+      const diversity = Object.values(state.upgrades).filter(u => u.level > 0).length;
+      synergyMult = Math.pow(upgradeDefinitions.synergy.baseValue, upgrade.level * diversity);
+    }
   });
 
-  total = total * autoMult * globalMult * superchargeMult * prestigeMult;
+  total = total * autoMult * globalMult * superchargeMult * synergyMult * prestigeMult;
 
   return normalizeSci(toScientificParts(total));
 }
 
 export function computeClickGain(state) {
   let total = 1;
-  const prestigeMult = 1 + (state.prestigeLevel * 0.5);
+  let prestigeMult = 1 + (state.prestigeLevel * 0.5);
+
+  const prestigeAccel = state.upgrades.prestigeAccelerator;
+  if (prestigeAccel && prestigeAccel.level > 0) {
+    const bonus = prestigeAccel.level * upgradeDefinitions.prestigeAccelerator.baseValue;
+    prestigeMult = 1 + (state.prestigeLevel * (0.5 + bonus));
+  }
 
   Object.keys(upgradeDefinitions).forEach(key => {
     const def = upgradeDefinitions[key];
@@ -201,6 +299,7 @@ export function computeClickGain(state) {
   let clickMult = 1;
   let globalMult = 1;
   let superchargeMult = 1;
+  let synergyMult = 1;
 
   Object.keys(upgradeDefinitions).forEach(key => {
     const def = upgradeDefinitions[key];
@@ -213,9 +312,14 @@ export function computeClickGain(state) {
       else if (key === 'globalMultiplier') globalMult *= mult;
       else if (key === 'supercharger') superchargeMult *= mult;
     }
+
+    if (key === 'synergy' && upgrade.level > 0) {
+      const diversity = Object.values(state.upgrades).filter(u => u.level > 0).length;
+      synergyMult = Math.pow(upgradeDefinitions.synergy.baseValue, upgrade.level * diversity);
+    }
   });
 
-  total = total * clickMult * globalMult * superchargeMult * prestigeMult;
+  total = total * clickMult * globalMult * superchargeMult * synergyMult * prestigeMult;
 
   return normalizeSci(toScientificParts(total));
 }

@@ -126,6 +126,48 @@ export function checkAchievements(state, unlockedIds) {
       case 'automation_king':
         condition = ['autoClicker', 'factory', 'laboratory', 'quantumCore', 'timeMachine', 'dimensionalRift'].every(k => state.upgrades[k]?.level > 0);
         break;
+      case 'score_1qi':
+        condition = scoreValue >= 1e18;
+        break;
+      case 'score_1sx':
+        condition = scoreValue >= 1e21;
+        break;
+      case 'clicks_100k':
+        condition = (state.totalClicks || 0) >= 100000;
+        break;
+      case 'clicks_1m':
+        condition = (state.totalClicks || 0) >= 1000000;
+        break;
+      case 'all_basics':
+        condition = ['clickPower', 'autoClicker', 'factory'].every(k => state.upgrades[k]?.level > 0);
+        break;
+      case 'all_advanced':
+        condition = ['laboratory', 'quantumCore', 'timeMachine', 'dimensionalRift', 'antimatterReactor', 'neuralNetwork'].every(k => state.upgrades[k]?.level > 0);
+        break;
+      case 'mega_clicker':
+        condition = state.upgrades.clickPower?.level >= 50;
+        break;
+      case 'factory_master':
+        condition = state.upgrades.factory?.level >= 100;
+        break;
+      case 'prestige_100':
+        condition = state.prestigeLevel >= 100;
+        break;
+      case 'combo_diversity':
+        condition = Object.values(state.upgrades).filter(u => u.level > 0).length >= 15;
+        break;
+      case 'combo_balanced':
+        condition = Object.values(state.upgrades).filter(u => u.level >= 10).length >= 5;
+        break;
+      case 'combo_specialist':
+        condition = Object.values(state.upgrades).some(u => u.level >= 100);
+        break;
+      case 'secret_rich':
+        condition = Object.values(state.upgrades).filter(u => u.level > 0).length >= Object.keys(state.upgrades).length - 2;
+        break;
+      case 'secret_minimalist':
+        condition = scoreValue >= 1000000 && Object.values(state.upgrades).filter(u => u.level > 0).length < 5;
+        break;
     }
 
     if (condition) {
