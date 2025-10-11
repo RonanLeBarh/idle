@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IdleClick — Incremental</title>
+  <script type="module" crossorigin src="/assets/index-DL_OPon-.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-Bt4w94H2.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">⬢</span>
+      <h1>IdleClick</h1>
+    </div>
+    <div class="session">
+      <span id="authStatus" class="auth-status">Session anonyme</span>
+      <button id="authBtn" class="btn primary">Se connecter</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel score-panel">
+      <h2>Score</h2>
+      <div class="score"><span id="scoreValue">0</span></div>
+      <div class="rate">Production: <strong><span id="rateValue">0</span></strong></div>
+      <div class="prestige-info">
+        <div class="prestige-stat">Prestige: <strong id="prestigeLevel">0</strong></div>
+        <div class="prestige-stat">Points: <strong id="prestigePoints">0</strong></div>
+      </div>
+      <div class="actions">
+        <button id="clickBtn" class="btn jumbo">+1</button>
+        <button id="prestigeBtn" class="btn accent" disabled>Prestige<br><span style="font-size:12px">Requis: 1B</span></button>
+      </div>
+      <div class="actions">
+        <button id="resetBtn" class="btn danger">Reset</button>
+      </div>
+    </section>
+
+    <section class="panel shop-panel">
+      <h2>Boutique</h2>
+      <div id="shopList" class="shop-list"></div>
+    </section>
+
+    <section class="panel leaderboard-panel">
+      <h2>Classement global</h2>
+      <ol id="leaderboardList" class="leaderboard"></ol>
+    </section>
+
+    <section class="panel achievements-panel">
+      <h2>Succès</h2>
+      <div id="achievementsList" class="achievements-list"></div>
+    </section>
+  </main>
+
+  <div id="authModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="authModalTitle">Connexion</h2>
+        <button id="closeAuthModal" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="loginForm" class="auth-form">
+          <input id="loginEmail" type="email" placeholder="Email" class="input" />
+          <input id="loginPassword" type="password" placeholder="Mot de passe" class="input" />
+          <button id="loginBtn" class="btn primary full-width">Se connecter</button>
+          <p class="link-text">Pas encore de compte ? <a href="#" id="showRegister">Créer un compte</a></p>
+        </div>
+        <div id="registerForm" class="auth-form hidden">
+          <input id="displayNameInput" type="text" maxlength="16" placeholder="Pseudo" class="input" />
+          <input id="registerEmail" type="email" placeholder="Email" class="input" />
+          <input id="registerPassword" type="password" placeholder="Mot de passe" class="input" />
+          <input id="registerPasswordConfirm" type="password" placeholder="Confirmer le mot de passe" class="input" />
+          <button id="registerBtn" class="btn primary full-width">Créer un compte</button>
+          <p class="link-text">Déjà un compte ? <a href="#" id="showLogin">Se connecter</a></p>
+        </div>
+        <div id="authMessage" class="auth-message"></div>
+      </div>
+    </div>
+  </div>
+
+  <pre id="debug" style="background:#111;color:#0f0;padding:8px;font-size:12px;max-height:150px;overflow:auto;"></pre>
+
+</body>
+</html>
